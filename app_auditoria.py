@@ -1,153 +1,120 @@
 import streamlit as st
 import pandas as pd
-import backend_fiscal as motor # Importando nosso motor separado!
+import backend_fiscal as motor
 
-# --- CONFIGURAÇÃO VISUAL ---
-st.set_page_config(page_title="Auditor Fiscal - LC 214/2025", page_icon="⚖️", layout="wide")
+st.set_page_config(page_title="Auditor Fiscal - LC 214", page_icon="⚖️", layout="wide")
 
-# Estilo CSS para deixar mais profissional
 st.markdown("""
     <style>
     .big-font { font-size:20px !important; font-weight: bold; }
-    .metric-box { background-color: #f0f2f6; padding: 10px; border-radius: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- CARREGAMENTO ---
-df, df_indop = motor.carregar_dados()
+# --- CARREGAMENTO (AGORA COM 3 DATAFRAMES) ---
+df, df_indop, df_regras = motor.carregar_dados()
 
 if df is None:
-    st.error("Erro ao carregar dados. Verifique os arquivos JSON.")
+    st.error("Erro crítico: Arquivo principal não encontrado.")
     st.stop()
 
-# --- SIDEBAR (FILTROS) ---
-st.sidebar.title("🎛️ Painel de Controle")
+# --- SIDEBAR ---
+st.sidebar.title("🎛️ Painel Fiscal")
+st.sidebar.info("Base de Conhecimento Carregada:\n\n✅ Anexo VIII (Serviços)\n✅ Anexo VII (IndOp)\n✅ Classificação Tributária (Regras)")
 st.sidebar.markdown("---")
 
-modo_visualizacao = st.sidebar.radio("Modo de Operação:", ["🔍 Consulta & Auditoria", "🧮 Simulador de Cálculo"])
+modo = st.sidebar.radio("Modo:", ["🔍 Consulta", "🧮 Simulador Real"])
 
-# --- LÓGICA DE FILTRAGEM (GLOBAL) ---
-# Mantemos a busca aqui para usar em ambas as abas se precisar
-termo_busca = st.sidebar.text_input("Buscar Item (NBS/Descrição):", placeholder="Ex: Software, 1.01...").lower()
+termo = st.sidebar.text_input("Buscar:", placeholder="Digite NBS ou Descrição...").lower()
 
+# Filtro Global
 df_view = df.copy()
-if termo_busca:
+if termo:
     df_view = df_view[
-        df_view['NBS'].astype(str).str.lower().str.contains(termo_busca, na=False) | 
-        df_view['DESCRIÇÃO NBS'].str.lower().str.contains(termo_busca, na=False) |
-        df_view['Descrição Item'].str.lower().str.contains(termo_busca, na=False)
+        df_view['NBS'].astype(str).str.lower().str.contains(termo, na=False) | 
+        df_view['DESCRIÇÃO NBS'].str.lower().str.contains(termo, na=False)
     ]
 
-# --- ABA 1: CONSULTA & AUDITORIA ---
-if modo_visualizacao == "🔍 Consulta & Auditoria":
-    st.title("🔍 Auditoria de Classificação Fiscal")
-    st.caption("Base: Anexo VIII e VII - Reforma Tributária")
+# --- ABA CONSULTA ---
+if modo == "🔍 Consulta":
+    st.title("🔍 Auditoria de Classificação")
     
     event = st.dataframe(
-        df_view,
-        use_container_width=True,
-        hide_index=True,
+        df_view, 
+        use_container_width=True, 
+        hide_index=True, 
         selection_mode="single-row",
         on_select="rerun",
-        height=400,
         column_config={"Item LC 116": st.column_config.TextColumn("LC 116")}
     )
 
     if len(event.selection.rows) > 0:
-        # Recupera dados selecionados
-        idx = event.selection.rows[0]
-        row = df_view.iloc[idx]
-        cod_indop = str(row['INDOP'])
-        
+        row = df_view.iloc[event.selection.rows[0]]
         st.markdown("---")
-        c1, c2 = st.columns([1, 2])
+        st.info(f"**Item Selecionado:** {row['DESCRIÇÃO NBS']} (NBS: {row['NBS']})")
         
+        c1, c2 = st.columns(2)
         with c1:
-            st.info(f"**NBS Selecionada:** {row['NBS']}")
-            st.write(f"**Descrição:** {row['DESCRIÇÃO NBS']}")
-            st.write(f"**Tributação:** {row['nome cClassTrib']}")
+            st.write(f"**Tributação (Anexo VIII):** {row['nome cClassTrib']}")
+            st.caption(f"Cód: {row['cClassTrib']}")
         
         with c2:
-            # Busca no IndOp
-            detalhe = df_indop[df_indop['CODIGO'] == cod_indop] if not df_indop.empty else pd.DataFrame()
-            
-            if not detalhe.empty:
-                d = detalhe.iloc[0]
-                with st.container(border=True):
-                    st.markdown(f"### 📖 IndOp: {d['DESCRICAO']}")
-                    st.write(f"📍 **Local:** {d['LOCAL_OPERACAO']}")
-                    if 'LOCAL_DFE' in d:
-                        st.success(f"📄 **Destaque no DFe:** {d['LOCAL_DFE']}")
-            else:
-                st.warning("Sem detalhes adicionais de IndOp.")
+            # Mostra detalhes da Regra se existir no arquivo novo
+            chave = f"{int(row['cClassTrib']):06d}" if pd.notnull(row['cClassTrib']) else "000000"
+            if not df_regras.empty and 'CHAVE' in df_regras.columns:
+                regra = df_regras[df_regras['CHAVE'] == chave]
+                if not regra.empty:
+                    r = regra.iloc[0]
+                    with st.container(border=True):
+                        st.markdown(f"**Regra Aplicável:** {r['Descrição da Situação Tributária']}")
+                        st.write(f"📉 Redução IBS: **{r['Percentual Redução IBS']}%**")
+                        st.write(f"📉 Redução CBS: **{r['Percentual Redução CBS']}%**")
+                else:
+                    st.warning("Regra não encontrada no arquivo de classificação.")
 
-# --- ABA 2: SIMULADOR DE CÁLCULO (NOVA!) ---
-elif modo_visualizacao == "🧮 Simulador de Cálculo":
-    st.title("🧮 Simulador de Impacto Tributário (IBS/CBS)")
-    st.markdown("**Metodologia:** Cálculo baseado na alíquota de referência e regras de redução por `cClassTrib`.")
+# --- ABA SIMULADOR ---
+elif modo == "🧮 Simulador Real":
+    st.title("🧮 Simulador com Regras Reais (LC 214)")
     
-    col_input, col_result = st.columns([1, 1.5])
+    c_input, c_res = st.columns([1, 1.5])
     
-    with col_input:
-        st.subheader("1. Parâmetros da Simulação")
+    with c_input:
+        st.subheader("Parâmetros")
         
-        # O usuário seleciona um serviço da lista filtrada
-        servico_selecionado = st.selectbox(
-            "Selecione o Serviço (baseado no filtro lateral):",
+        servico = st.selectbox(
+            "Serviço:", 
             options=df_view['DESCRIÇÃO NBS'].unique(),
             index=0 if len(df_view) > 0 else None
         )
         
-        if servico_selecionado:
-            # Pega os dados do serviço escolhido
-            dados_servico = df_view[df_view['DESCRIÇÃO NBS'] == servico_selecionado].iloc[0]
-            st.caption(f"Código Tributação: {dados_servico['cClassTrib']}")
-            st.caption(f"Regra: {dados_servico['nome cClassTrib']}")
+        if servico:
+            item = df_view[df_view['DESCRIÇÃO NBS'] == servico].iloc[0]
+            st.caption(f"Cód. Tributação: {item['cClassTrib']}")
             
-            st.markdown("---")
-            val_servico = st.number_input("Valor do Serviço (R$):", min_value=0.0, value=1000.0, step=100.0)
+            val = st.number_input("Valor Nota (R$):", value=1000.0, step=100.0)
             
-            # Alíquotas de Referência (Editáveis, pois a lei define, mas o senado ajusta)
-            st.markdown(" **Alíquotas de Referência (%):**")
-            c_aliq1, c_aliq2 = st.columns(2)
-            ibs_ref = c_aliq1.number_input("IBS (Ref):", value=17.7, step=0.1)
-            cbs_ref = c_aliq2.number_input("CBS (Ref):", value=8.8, step=0.1)
+            st.markdown("**Alíquotas Base (%):**")
+            col_a, col_b = st.columns(2)
+            ibs_base = col_a.number_input("IBS:", value=17.7)
+            cbs_base = col_b.number_input("CBS:", value=8.8)
             
-            calcular = st.button("Calcular Tributos", type="primary", use_container_width=True)
+            btn_calc = st.button("Calcular", type="primary", use_container_width=True)
 
-    with col_result:
-        st.subheader("2. Resultado da Simulação")
-        
-        if servico_selecionado and calcular:
-            # CHAMA O BACKEND PARA CALCULAR
-            resultado = motor.calcular_tributos(
-                val_servico, ibs_ref, cbs_ref, dados_servico['cClassTrib']
-            )
+    with c_res:
+        st.subheader("Resultado")
+        if servico and btn_calc:
+            # Chama o cálculo passando o arquivo de regras
+            res = motor.calcular_tributos(val, ibs_base, cbs_base, item['cClassTrib'], df_regras)
             
-            # Exibe Cards de Resultado
-            c_res1, c_res2, c_res3 = st.columns(3)
-            c_res1.metric("Valor IBS", f"R$ {resultado['valor_ibs']:,.2f}")
-            c_res2.metric("Valor CBS", f"R$ {resultado['valor_cbs']:,.2f}")
-            c_res3.metric("Total Tributos", f"R$ {resultado['total_tributos']:,.2f}", delta=f"{resultado['carga_total_perc']:.2f}% Carga")
+            # Cards
+            k1, k2, k3 = st.columns(3)
+            k1.metric("IBS a Pagar", f"R$ {res['valor_ibs']:,.2f}", f"{res['ibs_efetivo']:.2f}% Ef.")
+            k2.metric("CBS a Pagar", f"R$ {res['valor_cbs']:,.2f}", f"{res['cbs_efetivo']:.2f}% Ef.")
+            k3.metric("Total", f"R$ {res['total_tributos']:,.2f}", f"{res['carga_total_perc']:.2f}% Carga")
             
-            # Detalhamento Visual
             with st.container(border=True):
-                st.markdown(f"**Regime Identificado:** {resultado['regime']}")
-                if resultado['reducao_aplicada'] != "0%":
-                    st.success(f"✅ Redutor Aplicado: **{resultado['reducao_aplicada']}** de desconto na alíquota.")
+                st.markdown(f"**Regra Aplicada:** {res['descricao_regra']}")
                 
-                st.markdown("---")
-                st.write("memória de cálculo:")
-                st.code(f"""
-Serviço: R$ {val_servico:,.2f}
-
-IBS ({ibs_ref}%) -> Efetivo: {resultado['ibs_efetivo']:.2f}% = R$ {resultado['valor_ibs']:,.2f}
-CBS ({cbs_ref}%)  -> Efetivo: {resultado['cbs_efetivo']:.2f}% = R$ {resultado['valor_cbs']:,.2f}
-
-Total a Recolher: R$ {resultado['total_tributos']:,.2f}
-                """)
-        
-        elif not servico_selecionado:
-            st.info("Utilize os filtros na barra lateral para encontrar o serviço desejado.")
-        else:
-            st.write("Clique em 'Calcular' para ver os resultados.")
+                if res['reducao_ibs'] > 0 or res['reducao_cbs'] > 0:
+                    st.success(f"✅ Benefício Identificado: Redução de **{res['reducao_ibs']}%** no IBS e **{res['reducao_cbs']}%** na CBS.")
+                else:
+                    st.info("ℹ️ Tributação padrão sem reduções identificadas para este código.")
