@@ -3,156 +3,231 @@
         "BASE_LEGAL":"Inc. II",
         "LOCAL_OPERACAO":"o local onde o imóvel estiver situado",
         "DESCRICAO":"Execução de operações com bem imóvel, bem imaterial, inclusive direito, relacionado a bem imóvel",
-        "CODIGO":"020101"
+        "CODIGO":"020101",
+        "LOCAL_DFE":"Localidade do imóvel (1)"
     },
     {
-        "BASE_LEGAL":null,
+        "BASE_LEGAL":"Inc. II",
         "LOCAL_OPERACAO":"o local onde o imóvel estiver situado",
         "DESCRICAO":"Execução de serviços sobre bem imóvel",
-        "CODIGO":"020201"
+        "CODIGO":"020201",
+        "LOCAL_DFE":"Localidade do imóvel (1)"
     },
     {
-        "BASE_LEGAL":null,
+        "BASE_LEGAL":"Inc. II",
         "LOCAL_OPERACAO":"o local onde o imóvel estiver situado",
         "DESCRICAO":"Execução dos serviços de administração e intermediação de bens imóveis",
-        "CODIGO":"020301"
+        "CODIGO":"020301",
+        "LOCAL_DFE":"Localidade do imóvel (1)"
     },
     {
         "BASE_LEGAL":"Inc. III",
         "LOCAL_OPERACAO":"o local da prestação do serviço",
         "DESCRICAO":"Execução de serviços diversos exclusivamente prestados fisicamente sobre a pessoa ou integralmente fruídos presencialmente por pessoa física (2)",
-        "CODIGO":"030101"
+        "CODIGO":"030101",
+        "LOCAL_DFE":"Estabelecimento do fornecedor"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"030102"
+        "BASE_LEGAL":"Inc. III",
+        "LOCAL_OPERACAO":"o local da prestação do serviço",
+        "DESCRICAO":"Execução de serviços diversos exclusivamente prestados fisicamente sobre a pessoa ou integralmente fruídos presencialmente por pessoa física (2)",
+        "CODIGO":"030102",
+        "LOCAL_DFE":"Endereço do adquirente"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"030103"
+        "BASE_LEGAL":"Inc. III",
+        "LOCAL_OPERACAO":"o local da prestação do serviço",
+        "DESCRICAO":"Execução de serviços diversos exclusivamente prestados fisicamente sobre a pessoa ou integralmente fruídos presencialmente por pessoa física (2)",
+        "CODIGO":"030103",
+        "LOCAL_DFE":"Endereço do destinatário"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"030104"
+        "BASE_LEGAL":"Inc. III",
+        "LOCAL_OPERACAO":"o local da prestação do serviço",
+        "DESCRICAO":"Execução de serviços diversos exclusivamente prestados fisicamente sobre a pessoa ou integralmente fruídos presencialmente por pessoa física (2)",
+        "CODIGO":"030104",
+        "LOCAL_DFE":"Endereço diverso do fornecedor, adquirente ou destinatário"
     },
     {
         "BASE_LEGAL":"Inc. IV",
         "LOCAL_OPERACAO":"o local do evento a que\nse refere o serviço",
         "DESCRICAO":"Execução de serviços de planejamento, organização e administração de feiras, exposições, congressos, espetáculos, exibições e congêneres",
-        "CODIGO":"040101"
+        "CODIGO":"040101",
+        "LOCAL_DFE":"Local do Evento"
     },
     {
         "BASE_LEGAL":"Inc. V",
         "LOCAL_OPERACAO":"o local da prestação do serviço",
         "DESCRICAO":"Execução de serviços diversos fisicamente prestados sobre bem móvel material",
-        "CODIGO":"050101"
+        "CODIGO":"050101",
+        "LOCAL_DFE":"Estabelecimento do fornecedor"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"050102"
+        "BASE_LEGAL":"Inc. V",
+        "LOCAL_OPERACAO":"o local da prestação do serviço",
+        "DESCRICAO":"Execução de serviços diversos fisicamente prestados sobre bem móvel material",
+        "CODIGO":"050102",
+        "LOCAL_DFE":"Endereço do adquirente"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"050103"
+        "BASE_LEGAL":"Inc. V",
+        "LOCAL_OPERACAO":"o local da prestação do serviço",
+        "DESCRICAO":"Execução de serviços diversos fisicamente prestados sobre bem móvel material",
+        "CODIGO":"050103",
+        "LOCAL_DFE":"Endereço do destinatário"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"050104"
+        "BASE_LEGAL":"Inc. V",
+        "LOCAL_OPERACAO":"o local da prestação do serviço",
+        "DESCRICAO":"Execução de serviços diversos fisicamente prestados sobre bem móvel material",
+        "CODIGO":"050104",
+        "LOCAL_DFE":"Endereço diverso do fornecedor, adquirente ou destinatário"
     },
     {
-        "BASE_LEGAL":null,
+        "BASE_LEGAL":"Inc. V",
         "LOCAL_OPERACAO":"o local da prestação do serviço",
         "DESCRICAO":"Execução de serviços portuários",
-        "CODIGO":"050201"
+        "CODIGO":"050201",
+        "LOCAL_DFE":"Local da prestação"
     },
     {
         "BASE_LEGAL":"Inc. VI",
         "LOCAL_OPERACAO":"o local da prestação do serviço",
         "DESCRICAO":"Execução de serviços de transporte de passageiros",
-        "CODIGO":"060101"
+        "CODIGO":"060101",
+        "LOCAL_DFE":"Local de início do transporte"
     },
     {
         "BASE_LEGAL":"Inc. VII",
         "LOCAL_OPERACAO":"o local da prestação do serviço",
         "DESCRICAO":"Execução de serviços de transporte de carga",
-        "CODIGO":"070101"
+        "CODIGO":"070101",
+        "LOCAL_DFE":"Endereço fornecido para entrega"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"070102"
+        "BASE_LEGAL":"Inc. VII",
+        "LOCAL_OPERACAO":"o local da prestação do serviço",
+        "DESCRICAO":"Execução de serviços de transporte de carga",
+        "CODIGO":"070102",
+        "LOCAL_DFE":"Local da retirada"
     },
     {
         "BASE_LEGAL":"Inc. VIII",
         "LOCAL_OPERACAO":"o território de cada Município e Estado, ou do Distrito Federal, proporcionalmente à correspondente\nextensão da via explorada",
         "DESCRICAO":"Execução de serviços de exploração de via",
-        "CODIGO":"080101"
+        "CODIGO":"080101",
+        "LOCAL_DFE":"Local da prestação, correspondente à extensão da via explorada e proporcional ao território dos entes tributantes"
     },
     {
         "BASE_LEGAL":"Inc. X",
         "LOCAL_OPERACAO":"o local do domicílio principal do:\na) adquirente, nas operações onerosas;\n...",
         "DESCRICAO":"Execução de operações de cessão de espaço para prestação de serviços publicitários",
-        "CODIGO":"100101"
+        "CODIGO":"100101",
+        "LOCAL_DFE":"Local do domicílio principal do adquirente (3)"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"100102"
+        "BASE_LEGAL":"Inc. X",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\na) adquirente, nas operações onerosas;\n...",
+        "DESCRICAO":"Execução de operações de cessão de espaço para prestação de serviços publicitários",
+        "CODIGO":"100102",
+        "LOCAL_DFE":"Local do domicílio do destinatário, nos casos de adquirente residente ou domiciliado no exterior (5)(6)"
     },
     {
-        "BASE_LEGAL":null,
+        "BASE_LEGAL":"Inc. X",
         "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
         "DESCRICAO":"Execução de operações de cessão de espaço para prestação de serviços publicitários",
-        "CODIGO":"100201"
+        "CODIGO":"100201",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
     },
     {
-        "BASE_LEGAL":null,
+        "BASE_LEGAL":"Inc. X",
         "LOCAL_OPERACAO":"o local do domicílio principal do:\na) adquirente, nas operações onerosas;\n...",
         "DESCRICAO":"Execução dos demais serviços em operações não especificadas anteriormente ou, nos serviços de que trata o inc. III, estes sejam, ainda que parcialmente, prestados à distância (2)",
-        "CODIGO":"100301"
+        "CODIGO":"100301",
+        "LOCAL_DFE":"Local do domicílio principal do adquirente (3)"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"100302"
+        "BASE_LEGAL":"Inc. X",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\na) adquirente, nas operações onerosas;\n...",
+        "DESCRICAO":"Execução dos demais serviços em operações não especificadas anteriormente ou, nos serviços de que trata o inc. III, estes sejam, ainda que parcialmente, prestados à distância (2)",
+        "CODIGO":"100302",
+        "LOCAL_DFE":"Local do domicílio do destinatário, nos casos de adquirente residente ou domiciliado no exterior (5)(6)"
     },
     {
-        "BASE_LEGAL":null,
+        "BASE_LEGAL":"Inc. X",
         "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
         "DESCRICAO":"Execução dos demais serviços em operações não especificadas anteriormente ou, nos serviços de que tratam o inc. III, estes sejam, ainda que parcialmente, prestados à distância",
-        "CODIGO":"100401"
+        "CODIGO":"100401",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
     },
     {
-        "BASE_LEGAL":null,
+        "BASE_LEGAL":"Inc. X",
         "LOCAL_OPERACAO":"o local do domicílio principal do:\na) adquirente, nas operações onerosas;\n...",
         "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
-        "CODIGO":"100501"
+        "CODIGO":"100501",
+        "LOCAL_DFE":"Local do domicílio principal do adquirente (3)"
     },
     {
-        "BASE_LEGAL":null,
-        "LOCAL_OPERACAO":null,
-        "DESCRICAO":null,
-        "CODIGO":"100502"
+        "BASE_LEGAL":"Inc. X",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\na) adquirente, nas operações onerosas;\n...",
+        "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
+        "CODIGO":"100502",
+        "LOCAL_DFE":"Local do domicílio do destinatário, nos casos de adquirente residente ou domiciliado no exterior (5)(6)"
     },
     {
-        "BASE_LEGAL":null,
+        "BASE_LEGAL":"Inc. X",
         "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
         "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
-        "CODIGO":"100601"
+        "CODIGO":"100601",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
+    },
+    {
+        "BASE_LEGAL":"Inc. X",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
+        "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
+        "CODIGO":"100601",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
+    },
+    {
+        "BASE_LEGAL":"(1) caso o bem imóvel esteja situado em mais de um Município, considera-se local do imóvel o Município onde está situada a maior parte da sua área (Art. 11, §2º)",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
+        "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
+        "CODIGO":"100601",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
+    },
+    {
+        "BASE_LEGAL":"(2) Aos serviços do inc. III, se parcialmente prestados à distância, aplica-se o disposto no inciso X (art. 11, §4º)",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
+        "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
+        "CODIGO":"100601",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
+    },
+    {
+        "BASE_LEGAL":"(3) nas aquisições realizadas de forma centralizada por contribuinte sujeito ao regime regular do IBS e da CBS que possui mais de um estabelecimento e que não estejam sujeitas a vedação à apropriação de créditos, os serviços do inc. IX do art. 11 serão considerados prestados no domicílio principal do adquirente; para o inc. X do art. 11 e o inc. I do §4º do art. 11, considera-se como domicílio principal do adquirente o local de seu estabelecimento matriz (art. 11, §4º, II)",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
+        "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
+        "CODIGO":"100601",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
+    },
+    {
+        "BASE_LEGAL":"(4) Aplica-se o disposto no inciso X do artigo 11 às operações de cessão de espaço para prestação de serviços publicitários (art. 11, §11)",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
+        "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
+        "CODIGO":"100601",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
+    },
+    {
+        "BASE_LEGAL":"(5) Na hipótese do inc. X do caput do art. 11, caso o adquirente seja residente ou domiciliado no exterior e o destinatário seja residente ou domiciliado no País, considera-se como local da operação o domicílio do destinatário (art. 11, §8)",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
+        "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
+        "CODIGO":"100601",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
+    },
+    {
+        "BASE_LEGAL":"(6) Domicílio do destinatário: vide §3º do art. 11 a respeito da caracterização do domicílio",
+        "LOCAL_OPERACAO":"o local do domicílio principal do:\n...\nb) destinatário, nas operações não onerosas.",
+        "DESCRICAO":"Execução de demais operações não especificadas anteriormente com bens móveis imateriais, inclusive direitos",
+        "CODIGO":"100601",
+        "LOCAL_DFE":"Local do domicílio principal do destinatário (6)"
     }
 ]
