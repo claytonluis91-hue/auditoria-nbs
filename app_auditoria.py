@@ -2,113 +2,114 @@ import streamlit as st
 import pandas as pd
 import os
 
-# --- 1. CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(
-    page_title="Auditor Fiscal - Consulta NBS",
-    page_icon="📊",
-    layout="wide"
-)
+st.set_page_config(page_title="Auditor Fiscal - Consulta Avançada", page_icon="🕵️‍♂️", layout="wide")
 
-# Título e Subtítulo
-st.title("📊 Painel de Correlação: Reforma Tributária (IBS/CBS)")
-st.markdown("---")
-
-# --- 2. CARREGAMENTO DOS DADOS ---
-@st.cache_data # Isso faz o app ficar rápido, carregando os dados apenas uma vez
+# --- FUNÇÃO PARA CARREGAR OS DADOS ---
+@st.cache_data
 def carregar_dados():
-    arquivo_json = "AnexoVIII_Convertido.json"
+    pasta = r"C:\Users\Clayton\Desktop\Auditoria_Fiscal\SERVIÇOS"
     
-    # Verifica se o arquivo existe antes de tentar ler
-    if not os.path.exists(arquivo_json):
-        return None
+    # Arquivo Principal (Anexo VIII)
+    path_main = os.path.join(pasta, "AnexoVIII_Convertido.json")
+    # Arquivo de Detalhes (Anexo VII - IndOp)
+    path_indop = os.path.join(pasta, "IndOp_Descricoes.json")
     
-    # Lê o JSON
-    df = pd.read_json(arquivo_json)
-    return df
+    if not os.path.exists(path_main):
+        st.error("Arquivo principal não encontrado.")
+        return None, None
+        
+    df_main = pd.read_json(path_main, dtype={'INDOP': str}) # Força INDOP como texto
+    
+    # Tenta carregar o IndOp
+    if os.path.exists(path_indop):
+        df_indop = pd.read_json(path_indop, dtype={'CODIGO': str})
+    else:
+        df_indop = pd.DataFrame() # Cria vazio se não achar
+        
+    return df_main, df_indop
 
-df = carregar_dados()
+# Carrega tudo
+df, df_indop = carregar_dados()
 
 if df is None:
-    st.error("❌ Arquivo 'AnexoVIII_Convertido.json' não encontrado na pasta.")
-    st.warning("Certifique-se de que o arquivo JSON gerado no passo anterior está na mesma pasta deste script.")
-    st.stop() # Para a execução aqui
+    st.stop()
 
-# --- 3. BARRA LATERAL (FILTROS) ---
-st.sidebar.header("🔍 Filtros de Busca")
+# --- BARRA LATERAL (FILTROS) ---
+st.sidebar.header("🔍 Filtros")
+termo = st.sidebar.text_input("Buscar (NBS, Descrição, LC 116):").lower()
+filtro_trib = st.sidebar.multiselect("Situação Tributária:", options=df['nome cClassTrib'].unique())
 
-# Filtro 1: Busca por Texto (NBS ou Descrição)
-termo_busca = st.sidebar.text_input("Buscar por NBS ou Descrição do Item:")
+# --- LÓGICA DE FILTRAGEM ---
+df_view = df.copy()
 
-# Filtro 2: Selecionar o Tipo de Tributação (cClassTrib)
-# Pegamos os valores únicos da coluna 'nome cClassTrib', ignorando vazios
-opcoes_tributacao = df['nome cClassTrib'].dropna().unique()
-filtro_tributacao = st.sidebar.multiselect(
-    "Filtrar por Situação Tributária:",
-    options=opcoes_tributacao
-)
-
-# Filtro 3: Filtrar por Item LC 116 (Opcional)
-# Convertendo para string para facilitar a busca
-itens_lc = df['Item LC 116'].dropna().astype(str).unique()
-filtro_lc = st.sidebar.selectbox(
-    "Filtrar por Item LC 116 (Opcional):",
-    options=["Todos"] + list(itens_lc)
-)
-
-# --- 4. LÓGICA DE FILTRAGEM ---
-df_filtrado = df.copy()
-
-# Aplica filtro de texto (busca inteligente em duas colunas)
-if termo_busca:
-    termo = termo_busca.lower()
-    # Busca tanto no código NBS quanto na descrição
-    df_filtrado = df_filtrado[
-        df_filtrado['NBS'].astype(str).str.lower().str.contains(termo, na=False) | 
-        df_filtrado['DESCRIÇÃO NBS'].str.lower().str.contains(termo, na=False) |
-        df_filtrado['Descrição Item'].str.lower().str.contains(termo, na=False)
+if termo:
+    df_view = df_view[
+        df_view['NBS'].astype(str).str.lower().str.contains(termo, na=False) | 
+        df_view['DESCRIÇÃO NBS'].str.lower().str.contains(termo, na=False) |
+        df_view['Descrição Item'].str.lower().str.contains(termo, na=False)
     ]
 
-# Aplica filtro de Tributação
-if filtro_tributacao:
-    df_filtrado = df_filtrado[df_filtrado['nome cClassTrib'].isin(filtro_tributacao)]
+if filtro_trib:
+    df_view = df_view[df_view['nome cClassTrib'].isin(filtro_trib)]
 
-# Aplica filtro de LC 116
-if filtro_lc != "Todos":
-    # Converte coluna para string para comparar com o selectbox
-    df_filtrado = df_filtrado[df_filtrado['Item LC 116'].astype(str) == filtro_lc]
+# --- INTERFACE PRINCIPAL ---
+st.title("🕵️‍♂️ Consultor Fiscal Inteligente")
+st.caption(f"Exibindo {len(df_view)} registros")
 
-# --- 5. EXIBIÇÃO DOS RESULTADOS ---
+# Exibe a tabela com opção de SELEÇÃO
+st.info("💡 Dica: Clique em uma linha da tabela para ver os detalhes da Operação (IndOp).")
 
-# Métricas no topo
-col1, col2 = st.columns(2)
-col1.metric("Registros Encontrados", len(df_filtrado))
-col2.metric("Total na Base Original", len(df))
+event = st.dataframe(
+    df_view,
+    use_container_width=True,
+    hide_index=True,
+    selection_mode="single-row", # Permite selecionar 1 linha
+    on_select="rerun", # Recarrega a página ao clicar
+    column_config={
+        "Item LC 116": st.column_config.TextColumn("LC 116"),
+        "cClassTrib": st.column_config.TextColumn("Cód. Trib."),
+    }
+)
 
-# Abas para visualização
-aba1, aba2 = st.tabs(["📋 Tabela Detalhada", "📈 Análise Gráfica"])
+# --- ÁREA DE DETALHES (APARECE AO CLICAR) ---
+if len(event.selection.rows) > 0:
+    # Pega o índice da linha selecionada
+    indice_selecionado = event.selection.rows[0]
+    # Pega os dados daquela linha no dataframe filtrado
+    linha_dados = df_view.iloc[indice_selecionado]
+    
+    # Pega o código INDOP dessa linha
+    codigo_indop = str(linha_dados['INDOP'])
+    
+    st.markdown("---")
+    st.subheader(f"🔎 Detalhes da Seleção: NBS {linha_dados['NBS']}")
+    
+    col_a, col_b = st.columns([1, 2])
+    
+    with col_a:
+        st.write("**Dados do Serviço:**")
+        st.success(f"**NBS:** {linha_dados['DESCRIÇÃO NBS']}")
+        st.write(f"**Tributação:** {linha_dados['nome cClassTrib']}")
+        st.write(f"**INDOP Aplicado:** `{codigo_indop}`")
+    
+    with col_b:
+        st.write("**Explicação da Operação (IndOp):**")
+        
+        # Cruzamento de dados (PROCV via código)
+        if not df_indop.empty:
+            info_extra = df_indop[df_indop['CODIGO'] == codigo_indop]
+            
+            if not info_extra.empty:
+                detalhe = info_extra.iloc[0]
+                with st.container(border=True):
+                    st.markdown(f"### 📌 {detalhe['DESCRICAO']}")
+                    st.markdown(f"**Local da Operação:** {detalhe['LOCAL_OPERACAO']}")
+                    st.caption(f"Base Legal: {detalhe['BASE_LEGAL']}")
+            else:
+                st.warning(f"Não encontramos descrição detalhada para o código INDOP {codigo_indop} no arquivo anexo.")
+        else:
+            st.warning("Arquivo de definições IndOp não carregado.")
 
-with aba1:
-    st.write("Visualização dos dados filtrados:")
-    # Dataframe interativo do Streamlit
-    st.dataframe(
-        df_filtrado, 
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Item LC 116": st.column_config.NumberColumn("Item LC", format="%.2f"),
-            "INDOP": st.column_config.NumberColumn("INDOP", format="%d"),
-        }
-    )
-
-with aba2:
-    if not df_filtrado.empty:
-        st.subheader("Distribuição por Situação Tributária")
-        # Conta quantos itens existem para cada tipo de tributação
-        contagem_trib = df_filtrado['nome cClassTrib'].value_counts()
-        st.bar_chart(contagem_trib)
-    else:
-        st.info("Sem dados para gerar gráficos com os filtros atuais.")
-
-# Rodapé
-st.markdown("---")
-st.caption("Sistema de Auditoria Fiscal - Desenvolvido em Python com Streamlit")
+else:
+    st.markdown("---")
+    st.caption("Selecione um item acima para ver a interpretação fiscal detalhada.")
