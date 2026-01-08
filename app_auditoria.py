@@ -5,6 +5,16 @@ import backend_fiscal as motor
 # --- 1. CONFIGURAÇÃO (WIDE LAYOUT) ---
 st.set_page_config(page_title="Auditor Fiscal - LC 214", page_icon="⚖️", layout="wide")
 
+st.markdown("""
+    <style>
+        /* Ajusta o espaçamento superior do container principal */
+        .block-container {
+            padding-top: 3rem; /* Aumente este valor se precisar descer mais */
+            padding-bottom: 2rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- 2. CSS PARA VISUAL DE SISTEMA (DASHBOARD) ---
 st.markdown("""
     <style>
@@ -214,3 +224,4 @@ with col_painel:
             <p>Os detalhes, regras tributárias e simulador aparecerão aqui.</p>
         </div>
         """, unsafe_allow_html=True)
+
