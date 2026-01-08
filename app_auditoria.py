@@ -28,6 +28,18 @@ st.markdown("""
     .badge-cinza {
         background-color: #f8f9fa; color: #6c757d; padding: 5px 10px; border-radius: 15px; font-weight: bold; font-size: 12px;
     }
+    
+    /* Destaque do CST no Header */
+    .badge-cst {
+        background-color: #004085; 
+        color: white; 
+        padding: 4px 10px; 
+        border-radius: 6px; 
+        font-weight: bold; 
+        font-size: 13px;
+        margin-left: 10px;
+        vertical-align: middle;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -85,7 +97,7 @@ with col_nav:
             "Item LC 116": st.column_config.TextColumn("LC", width="small"),
             "NBS": st.column_config.TextColumn("NBS", width="small"),
             "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição", width="medium"),
-            "cClassTrib": st.column_config.TextColumn("CST", width="small"), # Oculta visualmente se quiser
+            "cClassTrib": st.column_config.TextColumn("CST", width="small"), 
         }
     )
 
@@ -96,20 +108,26 @@ with col_painel:
         idx = event.selection.rows[0]
         row = df_view.iloc[idx]
         
-        # Recupera dados auxiliares
-        cod_trib = str(int(row['cClassTrib'])) if pd.notnull(row['cClassTrib']) else "0"
-        chave_regra = f"{int(cod_trib):06d}"
+        # Recupera dados auxiliares e FORMATA O CST
+        cod_trib_raw = int(row['cClassTrib']) if pd.notnull(row['cClassTrib']) else 0
+        cst_formatado = f"{cod_trib_raw:06d}" # Transforma 1 em 000001
+        
+        chave_regra = cst_formatado # A chave para buscar regras é o próprio CST formatado
         
         regra_detalhe = pd.Series()
         if not df_regras.empty and 'CHAVE' in df_regras.columns:
             res = df_regras[df_regras['CHAVE'] == chave_regra]
             if not res.empty: regra_detalhe = res.iloc[0]
 
-        # --- CABEÇALHO DO ITEM (HEADER) ---
+        # --- CABEÇALHO DO ITEM (HEADER) COM CST EM DESTAQUE ---
+        # Aqui adicionei o span class="badge-cst"
         st.markdown(f"""
         <div class="css-card" style="border-left: 5px solid #007bff;">
-            <span style="color: #007bff; font-weight: bold; font-size: 14px;">LC {row['Item LC 116']} | NBS {row['NBS']}</span>
-            <h2 style="margin: 5px 0 10px 0;">{row['DESCRIÇÃO NBS']}</h2>
+            <div style="margin-bottom: 8px;">
+                <span style="color: #007bff; font-weight: bold; font-size: 14px;">LC {row['Item LC 116']} | NBS {row['NBS']}</span>
+                <span class="badge-cst">CST {cst_formatado}</span>
+            </div>
+            <h2 style="margin: 5px 0 10px 0; font-size: 22px;">{row['DESCRIÇÃO NBS']}</h2>
             <p style="color: gray; margin: 0;">{row['Descrição Item']}</p>
         </div>
         """, unsafe_allow_html=True)
