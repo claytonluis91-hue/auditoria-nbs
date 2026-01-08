@@ -2,188 +2,197 @@ import streamlit as st
 import pandas as pd
 import backend_fiscal as motor
 
-# --- CONFIGURAÇÃO VISUAL ---
+# --- 1. CONFIGURAÇÃO (WIDE LAYOUT) ---
 st.set_page_config(page_title="Auditor Fiscal - LC 214", page_icon="⚖️", layout="wide")
 
+# --- 2. CSS PARA VISUAL DE SISTEMA (DASHBOARD) ---
 st.markdown("""
     <style>
-    .stAlert { border-radius: 8px; }
-    .metric-container { background-color: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #dee2e6; }
+    /* Remove padding excessivo do topo */
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    
+    /* Estilo dos Cards (Caixas Brancas) */
+    .css-card {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border: 1px solid #e0e0e0;
+        margin-bottom: 15px;
+    }
+    
+    /* Destaque para Benefício Fiscal */
+    .badge-verde {
+        background-color: #d4edda; color: #155724; padding: 5px 10px; border-radius: 15px; font-weight: bold; font-size: 12px;
+    }
+    .badge-cinza {
+        background-color: #f8f9fa; color: #6c757d; padding: 5px 10px; border-radius: 15px; font-weight: bold; font-size: 12px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# --- CARREGAMENTO DOS DADOS ---
+# --- 3. CARREGAMENTO ---
 df, df_indop, df_regras = motor.carregar_dados()
 
 if df is None:
-    st.error("Erro crítico: Arquivos de dados não encontrados.")
+    st.error("Base de dados não encontrada.")
     st.stop()
 
-# --- BARRA LATERAL (CONTROLES) ---
-st.sidebar.title("🎛️ Painel de Controle")
-modo_operacao = st.sidebar.radio("Modo de Visualização:", ["🔍 Auditoria & Resumo", "🧮 Simulador de Cálculo"])
-st.sidebar.markdown("---")
+# --- 4. BARRA LATERAL (FILTROS GLOBAIS) ---
+with st.sidebar:
+    st.header("🎛️ Filtros")
+    termo = st.text_input("🔍 Pesquisar:", placeholder="LC, NBS ou Nome...").lower()
+    
+    # Filtro de Tributação
+    lista_trib = df['nome cClassTrib'].unique() if 'nome cClassTrib' in df.columns else []
+    filtro_trib = st.multiselect("Filtrar CST:", options=lista_trib)
+    
+    st.markdown("---")
+    st.info("ℹ️ Selecione um item na lista principal para ver os detalhes no painel à direita.")
 
-# --- MOTOR DE BUSCA OTIMIZADO (CORRIGIDO) ---
-st.sidebar.subheader("🔎 Filtros de Pesquisa")
-st.sidebar.info("Dica: Pesquise pelo código exato (ex: 1.05) ou nome.")
-termo = st.sidebar.text_input("Palavra-chave ou Código LC:", placeholder="Ex: 1.05, Software...").lower()
-
-# Filtro extra por tributação
-lista_tributacao = df['nome cClassTrib'].unique() if 'nome cClassTrib' in df.columns else []
-filtro_trib = st.sidebar.multiselect("Filtrar por Tipo de Tributação:", options=lista_tributacao)
-
-# --- LÓGICA DE FILTRAGEM ---
+# Aplicação dos Filtros
 df_view = df.copy()
-
-# 1. Aplica filtro de texto
 if termo:
-    # AQUI ESTAVA O PROBLEMA: Adicionamos explicitamente a coluna 'Item LC 116' na busca
     mask = (
-        df_view['Item LC 116'].astype(str).str.contains(termo, na=False) |  # Busca no Código LC (ex: 1.05)
-        df_view['NBS'].astype(str).str.lower().str.contains(termo, na=False) | # Busca na NBS
-        df_view['DESCRIÇÃO NBS'].astype(str).str.lower().str.contains(termo, na=False) | # Busca na Descrição NBS
-        df_view['Descrição Item'].astype(str).str.lower().str.contains(termo, na=False) | # Busca na Descrição da LC
-        df_view['nome cClassTrib'].astype(str).str.lower().str.contains(termo, na=False) # Busca na Tributação
+        df_view['Item LC 116'].astype(str).str.contains(termo, na=False) |
+        df_view['NBS'].astype(str).str.lower().str.contains(termo, na=False) |
+        df_view['DESCRIÇÃO NBS'].astype(str).str.lower().str.contains(termo, na=False) |
+        df_view['Descrição Item'].astype(str).str.lower().str.contains(termo, na=False)
     )
     df_view = df_view[mask]
 
-# 2. Aplica filtro de selectbox (Tributação)
 if filtro_trib:
     df_view = df_view[df_view['nome cClassTrib'].isin(filtro_trib)]
 
-# --- ABA 1: AUDITORIA & RESUMO ---
-if modo_operacao == "🔍 Auditoria & Resumo":
-    st.title("🔍 Auditoria de Classificação Fiscal")
+# --- 5. LAYOUT PRINCIPAL (DIVISÃO DA TELA) ---
+
+# Coluna 1 (Lista) | Coluna 2 (Detalhes)
+col_nav, col_painel = st.columns([1.2, 2], gap="medium")
+
+# === COLUNA DA ESQUERDA: LISTA DE NAVEGAÇÃO ===
+with col_nav:
+    st.subheader(f"📋 Resultados ({len(df_view)})")
     
-    c1, c2 = st.columns(2)
-    c1.metric("Itens Encontrados", len(df_view))
-    c2.metric("Total na Base", len(df))
-
-    st.info("💡 Clique em uma linha da tabela para ver o Resumo Executivo.")
-
-    # TABELA INTERATIVA
-    # Reorganizei as colunas para a LC aparecer primeiro
+    # Tabela simplificada para servir de "Menu"
     event = st.dataframe(
         df_view,
         use_container_width=True,
         hide_index=True,
         selection_mode="single-row",
         on_select="rerun",
-        height=300,
+        height=650, # Altura fixa para dar sensação de menu lateral
         column_config={
-            "Item LC 116": st.column_config.TextColumn("Cód. LC", width="small"),
-            "Descrição Item": st.column_config.TextColumn("Descrição LC", width="medium"),
+            "Item LC 116": st.column_config.TextColumn("LC", width="small"),
             "NBS": st.column_config.TextColumn("NBS", width="small"),
-            "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição NBS", width="large"),
+            "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição", width="medium"),
+            "cClassTrib": st.column_config.TextColumn("CST", width="small"), # Oculta visualmente se quiser
         }
     )
 
-    # --- O RESUMO EXECUTIVO ---
+# === COLUNA DA DIREITA: PAINEL DE DETALHES ===
+with col_painel:
+    # Verifica se tem algo selecionado
     if len(event.selection.rows) > 0:
         idx = event.selection.rows[0]
         row = df_view.iloc[idx]
         
-        # Prepara chaves de busca
+        # Recupera dados auxiliares
         cod_trib = str(int(row['cClassTrib'])) if pd.notnull(row['cClassTrib']) else "0"
         chave_regra = f"{int(cod_trib):06d}"
-        cod_indop = str(row['INDOP'])
         
-        # Buscas nos arquivos auxiliares
         regra_detalhe = pd.Series()
         if not df_regras.empty and 'CHAVE' in df_regras.columns:
             res = df_regras[df_regras['CHAVE'] == chave_regra]
             if not res.empty: regra_detalhe = res.iloc[0]
 
-        indop_detalhe = pd.Series()
-        if not df_indop.empty:
-            res = df_indop[df_indop['CODIGO'] == cod_indop]
-            if not res.empty: indop_detalhe = res.iloc[0]
-
-        st.markdown("---")
-        st.subheader(f"📑 Resumo: {row['NBS']}")
+        # --- CABEÇALHO DO ITEM (HEADER) ---
+        st.markdown(f"""
+        <div class="css-card" style="border-left: 5px solid #007bff;">
+            <span style="color: #007bff; font-weight: bold; font-size: 14px;">LC {row['Item LC 116']} | NBS {row['NBS']}</span>
+            <h2 style="margin: 5px 0 10px 0;">{row['DESCRIÇÃO NBS']}</h2>
+            <p style="color: gray; margin: 0;">{row['Descrição Item']}</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        col_res1, col_res2, col_res3 = st.columns(3)
+        # --- ÁREA DE CONTEÚDO (ABAS) ---
+        aba_dados, aba_calc = st.tabs(["📊 Análise Fiscal", "🧮 Calculadora"])
 
-        # CARD 1: SERVIÇO
-        with col_res1:
-            with st.container(border=True):
-                st.markdown("### 📦 Serviço (LC 116)")
-                st.write(f"**Código:** {row['Item LC 116']}")
-                st.info(f"{row['Descrição Item']}")
-                st.caption(f"NBS: {row['DESCRIÇÃO NBS']}")
-
-        # CARD 2: TRIBUTAÇÃO
-        with col_res2:
-            with st.container(border=True):
-                st.markdown("### 💰 Regra Fiscal")
-                red_ibs = float(regra_detalhe.get('Percentual Redução IBS', 0)) if not regra_detalhe.empty else 0
-                
-                if red_ibs > 0:
-                    st.success(f"**COM BENEFÍCIO**")
-                    st.write(f"📉 Red. IBS: **{red_ibs}%**")
-                    st.write(f"📉 Red. CBS: **{regra_detalhe.get('Percentual Redução CBS', 0)}%**")
-                else:
-                    st.warning("**TRIBUTAÇÃO PADRÃO**")
-                    st.write("Sem redução de alíquota.")
-                
-                st.caption(f"CST/Regra: {row['nome cClassTrib']}")
-
-        # CARD 3: OPERACIONAL
-        with col_res3:
-            with st.container(border=True):
-                st.markdown("### 📝 DFe (Nota Fiscal)")
-                if not indop_detalhe.empty:
-                    st.write(f"**IndOp:** {cod_indop}")
-                    if 'LOCAL_DFE' in indop_detalhe:
-                        st.error(f"📍 **Local:** {indop_detalhe['LOCAL_DFE']}")
+        # >>> ABA 1: DADOS <<<
+        with aba_dados:
+            c1, c2 = st.columns(2)
+            
+            # Coluna Esquerda da Aba: TRIBUTAÇÃO
+            with c1:
+                st.markdown("### 💰 Tributação")
+                with st.container(border=True):
+                    # Verifica Benefício
+                    red_ibs = float(regra_detalhe.get('Percentual Redução IBS', 0)) if not regra_detalhe.empty else 0
+                    
+                    if red_ibs > 0:
+                        st.markdown('<span class="badge-verde">COM REDUÇÃO</span>', unsafe_allow_html=True)
+                        st.markdown(f"**Regra:** {row['nome cClassTrib']}")
+                        st.markdown(f"📉 Redução IBS: **{red_ibs}%**")
+                        st.markdown(f"📉 Redução CBS: **{regra_detalhe.get('Percentual Redução CBS', 0)}%**")
                     else:
-                        st.write(f"Local: {indop_detalhe.get('LOCAL_OPERACAO', '-')}")
-                else:
-                    st.markdown("Sem dados IndOp.")
+                        st.markdown('<span class="badge-cinza">TRIBUTAÇÃO PADRÃO</span>', unsafe_allow_html=True)
+                        st.markdown(f"**Regra:** {row['nome cClassTrib']}")
+                        st.caption("Alíquota cheia aplicável.")
 
-# --- ABA 2: SIMULADOR ---
-elif modo_operacao == "🧮 Simulador de Cálculo":
-    st.title("🧮 Simulador Financeiro (LC 214)")
-    
-    col_input, col_result = st.columns([1, 1.5])
-    
-    with col_input:
-        st.subheader("Parâmetros")
-        
-        # Selectbox melhorado: Mostra LC + NBS
-        opcoes_servicos = df_view.apply(lambda x: f"LC {x['Item LC 116']} | NBS {x['NBS']} - {x['DESCRIÇÃO NBS'][:40]}...", axis=1)
-        
-        escolha = st.selectbox("Selecione o Serviço (da lista filtrada):", options=opcoes_servicos, index=0 if len(df_view)>0 else None)
-        
-        if escolha:
-            # Recupera NBS da string para achar a linha original
-            try:
-                # Extrai a parte da NBS da string "LC 1.01 | NBS 1.1501... - Descrição"
-                # Estratégia: Split por '| NBS ' e pegar o começo da segunda parte
-                nbs_part = escolha.split("| NBS ")[1].split(" - ")[0].strip()
-                item = df_view[df_view['NBS'].astype(str) == nbs_part].iloc[0]
-                
-                val = st.number_input("Valor Serviço (R$):", value=1000.0, step=100.0)
-                
-                c1, c2 = st.columns(2)
-                ibs_ref = c1.number_input("IBS Ref (%):", value=17.7)
-                cbs_ref = c2.number_input("CBS Ref (%):", value=8.8)
-                
-                calcular = st.button("Calcular Tributos", type="primary", use_container_width=True)
-            except:
-                st.warning("Erro ao selecionar item. Tente mudar o filtro.")
-                calcular = False
+            # Coluna Direita da Aba: OPERAÇÃO (IndOp)
+            with c2:
+                st.markdown("### 📝 Operação (DFe)")
+                with st.container(border=True):
+                    cod_indop = str(row['INDOP'])
+                    st.write(f"**Cód. IndOp:** {cod_indop}")
+                    
+                    # Busca IndOp
+                    if not df_indop.empty:
+                        res_ind = df_indop[df_indop['CODIGO'] == cod_indop]
+                        if not res_ind.empty:
+                            d_ind = res_ind.iloc[0]
+                            st.write(f"**Local:** {d_ind.get('LOCAL_OPERACAO', '-')}")
+                            if 'LOCAL_DFE' in d_ind:
+                                st.error(f"📍 **NFe:** {d_ind['LOCAL_DFE']}")
+                        else:
+                            st.warning("IndOp não detalhado.")
+                    else:
+                        st.caption("Sem dados.")
 
-    with col_result:
-        if escolha and calcular:
-            res = motor.calcular_tributos(val, ibs_ref, cbs_ref, item['cClassTrib'], df_regras)
-            
-            st.subheader("Previsão de Impostos")
-            k1, k2, k3 = st.columns(3)
-            k1.metric("IBS", f"R$ {res['valor_ibs']:,.2f}", f"{res['ibs_efetivo']:.2f}%")
-            k2.metric("CBS", f"R$ {res['valor_cbs']:,.2f}", f"{res['cbs_efetivo']:.2f}%")
-            k3.metric("Total", f"R$ {res['total_tributos']:,.2f}", f"{res['carga_total_perc']:.2f}%")
+        # >>> ABA 2: CALCULADORA <<<
+        with aba_calc:
+            st.markdown("### Simulador de Custo Tributário")
             
             with st.container(border=True):
-                st.markdown(f"**Regra:** {res['descricao_regra']}")
+                col_in, col_out = st.columns([1, 1.5])
+                
+                with col_in:
+                    val_sim = st.number_input("Valor Serviço (R$):", value=1000.0, step=100.0)
+                    ibs_ref = st.number_input("IBS Ref (%):", value=17.7)
+                    cbs_ref = st.number_input("CBS Ref (%):", value=8.8)
+                    btn_calc = st.button("Calcular", type="primary", use_container_width=True)
+                
+                with col_out:
+                    if btn_calc:
+                        res = motor.calcular_tributos(val_sim, ibs_ref, cbs_ref, row['cClassTrib'], df_regras)
+                        
+                        st.metric("Total Tributos", f"R$ {res['total_tributos']:,.2f}", delta=f"{res['carga_total_perc']:.2f}% Carga Real", delta_color="inverse")
+                        
+                        k1, k2 = st.columns(2)
+                        k1.metric("IBS", f"R$ {res['valor_ibs']:,.2f}")
+                        k2.metric("CBS", f"R$ {res['valor_cbs']:,.2f}")
+                        
+                        if res['reducao_ibs'] > 0:
+                            st.success(f"Economia aplicada pela redução de {res['reducao_ibs']}%")
+                    else:
+                        st.info("Clique em calcular.")
+
+    else:
+        # TELA DE "DESCANSO" (QUANDO ABRE O SISTEMA)
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="text-align: center; color: #6c757d;">
+            <h1>👈 Selecione um Serviço</h1>
+            <p>Utilize a lista à esquerda para navegar pelos itens da NBS/LC 116.</p>
+            <p>Os detalhes, regras tributárias e simulador aparecerão aqui.</p>
+        </div>
+        """, unsafe_allow_html=True)
