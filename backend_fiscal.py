@@ -40,15 +40,15 @@ def carregar_dados():
     else:
         df_regras = pd.DataFrame()
 
-    # 4. Carrega CNAE e CRIA COLUNA NUMÉRICA LIMPA
+    # 4. Carrega CNAE e CRIA COLUNA NUMÉRICA LIMPA (A SOLUÇÃO)
     if os.path.exists(path_cnae):
         try:
             with open(path_cnae, 'r', encoding='utf-8') as f:
                 data_cnae = json.load(f)
             df_cnae = pd.DataFrame(data_cnae)
             
-            # --- O SEGREDO ESTÁ AQUI ---
-            # Cria uma coluna 'cnae_numeros' removendo tudo que não é dígito (traços, barras, pontos)
+            # Limpa a coluna 'cnae' removendo traços, barras e pontos
+            # De '8630-5/99' vira '8630599'
             if not df_cnae.empty and 'cnae' in df_cnae.columns:
                 df_cnae['cnae_numeros'] = df_cnae['cnae'].astype(str).apply(lambda x: re.sub(r'\D', '', x))
                 
@@ -117,6 +117,7 @@ def consultar_cnpj_api(cnpj_input):
     if len(cnpj_limpo) != 14:
         return {"erro": "CNPJ deve ter 14 dígitos."}
     
+    # Usando BrasilAPI V1 que retorna o cnae_fiscal direto
     url = f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}"
     try:
         response = requests.get(url, timeout=10)
