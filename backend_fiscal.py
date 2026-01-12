@@ -40,15 +40,18 @@ def carregar_dados():
     else:
         df_regras = pd.DataFrame()
 
-    # 4. Carrega CNAE
+    # 4. Carrega CNAE e CRIA COLUNA NUMÉRICA LIMPA
     if os.path.exists(path_cnae):
         try:
             with open(path_cnae, 'r', encoding='utf-8') as f:
                 data_cnae = json.load(f)
             df_cnae = pd.DataFrame(data_cnae)
-            # Garante que a coluna CNAE seja string para evitar problemas de comparação
-            if 'cnae' in df_cnae.columns:
-                df_cnae['cnae'] = df_cnae['cnae'].astype(str)
+            
+            # --- O SEGREDO ESTÁ AQUI ---
+            # Cria uma coluna 'cnae_numeros' removendo tudo que não é dígito (traços, barras, pontos)
+            if not df_cnae.empty and 'cnae' in df_cnae.columns:
+                df_cnae['cnae_numeros'] = df_cnae['cnae'].astype(str).apply(lambda x: re.sub(r'\D', '', x))
+                
         except:
             df_cnae = pd.DataFrame()
     else:
@@ -120,26 +123,10 @@ def consultar_cnpj_api(cnpj_input):
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 404:
-            return {"erro": "CNPJ não encontrado."}
+            return {"erro": "CNPJ não encontrado na Receita Federal."}
         elif response.status_code == 429:
-            return {"erro": "Muitas consultas. Aguarde."}
+            return {"erro": "Muitas consultas. Aguarde um instante."}
         else:
             return {"erro": f"Erro API: {response.status_code}"}
     except Exception as e:
         return {"erro": f"Erro conexão: {str(e)}"}
-
-# --- 5. FORMATADOR DE CNAE (A SOLUÇÃO DO PROBLEMA) ---
-def aplicar_mascara_cnae(cnae_raw):
-    """
-    Recebe '6920601' e retorna '6920-6/01'.
-    Isso garante que bata com o formato do JSON do usuário.
-    """
-    cnae_str = str(cnae_raw).strip()
-    # Remove qualquer pontuação que já exista pra garantir
-    cnae_str = re.sub(r'\D', '', cnae_str)
-    
-    # Se tiver 7 dígitos (padrão CNAE), aplica a máscara
-    if len(cnae_str) == 7:
-        return f"{cnae_str[:4]}-{cnae_str[4]}/{cnae_str[5:]}"
-    
-    return cnae_str # Se não tiver 7 dígitos, devolve como está
