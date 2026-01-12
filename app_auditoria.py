@@ -36,7 +36,7 @@ tab_auditoria, tab_cnae_manual, tab_cnpj = st.tabs([
 ])
 
 # ==========================================================
-# ABA 1: AUDITORIA E SIMULADOR
+# ABA 1: AUDITORIA E SIMULADOR (MANTIDA)
 # ==========================================================
 with tab_auditoria:
     with st.sidebar:
@@ -183,7 +183,7 @@ with tab_cnae_manual:
         st.error("Arquivo CNAE não carregado.")
 
 # ==========================================================
-# ABA 3: CONSULTA POR CNPJ (CORRIGIDO!)
+# ABA 3: CONSULTA POR CNPJ (AGORA VAI! 🚀)
 # ==========================================================
 with tab_cnpj:
     st.header("🏢 Consulta Automatizada por CNPJ")
@@ -214,19 +214,26 @@ with tab_cnpj:
                 c3.write(f"**UF:** {dados_empresa.get('uf')}")
             
             # --- PROCESSAMENTO DOS CNAES ---
-            cnae_principal = dados_empresa.get('cnae_fiscal_principal', {})
+            # Aqui ajustamos para pegar o campo 'cnae_fiscal' que é direto na raiz do JSON
+            cnae_principal_cod = dados_empresa.get('cnae_fiscal')
+            
+            # Se não achar direto, tenta procurar no objeto (caso a API mude)
+            if not cnae_principal_cod:
+                cnae_principal_obj = dados_empresa.get('cnae_fiscal_principal', {})
+                if isinstance(cnae_principal_obj, dict):
+                    cnae_principal_cod = cnae_principal_obj.get('codigo')
+
             cnaes_secundarios = dados_empresa.get('cnaes_secundarios', [])
             
             # 1. Pega os códigos da API e LIMPA TUDO (só números)
             lista_codigos_numericos = []
             
-            # CNAE Principal
-            if cnae_principal and 'codigo' in cnae_principal:
-                # Garante que é string e remove não-dígitos
-                cod_limpo = re.sub(r'\D', '', str(cnae_principal['codigo']))
+            # Adiciona CNAE Principal
+            if cnae_principal_cod:
+                cod_limpo = re.sub(r'\D', '', str(cnae_principal_cod))
                 lista_codigos_numericos.append(cod_limpo)
             
-            # CNAEs Secundários
+            # Adiciona CNAEs Secundários
             for item in cnaes_secundarios:
                 if 'codigo' in item:
                     cod_limpo = re.sub(r'\D', '', str(item['codigo']))
@@ -235,8 +242,10 @@ with tab_cnpj:
             st.subheader("🛠️ Serviços Compatíveis (LC 116)")
             st.caption(f"Códigos CNAE encontrados na Receita: {', '.join(lista_codigos_numericos)}")
             
+            # 2. COMPARAÇÃO (NUMERO COM NUMERO)
             if not df_cnae.empty and 'cnae_numeros' in df_cnae.columns:
-                # 2. Compara NUMERO com NUMERO (Infallível)
+                
+                # A mágica acontece aqui: isin compara a coluna numérica com a lista numérica
                 resultado_cruzamento = df_cnae[df_cnae['cnae_numeros'].isin(lista_codigos_numericos)]
                 
                 if not resultado_cruzamento.empty:
@@ -244,7 +253,7 @@ with tab_cnpj:
                     st.dataframe(
                         resultado_cruzamento,
                         column_config={
-                            "cnae": "CNAE (Formatado)",
+                            "cnae": "CNAE",
                             "descricao_cnae": "Atividade CNAE",
                             "item_lista_servico": "Item LC 116",
                             "descricao_item": "Serviço Permitido",
@@ -257,6 +266,6 @@ with tab_cnpj:
             else:
                 st.error("Erro no arquivo de dados CNAE local (Coluna numérica não criada).")
                 
-            # DEBUGGER OPCIONAL (Para você ver o que a API trouxe se der erro)
-            with st.expander("Ver dados brutos da API (Debug)"):
+            # DEBUGGER (Se quiser ver o JSON original)
+            with st.expander("Ver dados brutos da API"):
                 st.json(dados_empresa)
