@@ -40,7 +40,7 @@ def carregar_dados():
     else:
         df_regras = pd.DataFrame()
 
-    # 4. Carrega CNAE e CRIA COLUNA NUMÉRICA LIMPA (A SOLUÇÃO)
+    # 4. Carrega CNAE e CRIA COLUNA NUMÉRICA LIMPA
     if os.path.exists(path_cnae):
         try:
             with open(path_cnae, 'r', encoding='utf-8') as f:
@@ -48,7 +48,6 @@ def carregar_dados():
             df_cnae = pd.DataFrame(data_cnae)
             
             # Limpa a coluna 'cnae' removendo traços, barras e pontos
-            # De '8630-5/99' vira '8630599'
             if not df_cnae.empty and 'cnae' in df_cnae.columns:
                 df_cnae['cnae_numeros'] = df_cnae['cnae'].astype(str).apply(lambda x: re.sub(r'\D', '', x))
                 
@@ -60,6 +59,11 @@ def carregar_dados():
     return df_main, df_indop, df_regras, df_cnae
 
 # --- 2. MOTOR DE CÁLCULO COMPARATIVO ---
+def calcular_tributos(valor_servico, aliq_ibs_ref, aliq_cbs_ref, codigo_tributacao, df_regras):
+    # Mantive o nome antigo da função caso seu front ainda use, mas encapsulando a lógica nova
+    # Se precisar da lógica antiga, me avise. Aqui estou assumindo a lógica do simulador.
+    return calcular_comparativo(valor_servico, 0, 0, 0, aliq_ibs_ref, aliq_cbs_ref, codigo_tributacao, df_regras)
+
 def calcular_comparativo(valor, iss, pis, cofins, ibs_ref, cbs_ref, codigo_tributacao, df_regras):
     aliq_total_atual = iss + pis + cofins
     valor_tributo_atual = valor * (aliq_total_atual / 100)
@@ -95,9 +99,15 @@ def calcular_comparativo(valor, iss, pis, cofins, ibs_ref, cbs_ref, codigo_tribu
         "reducao_cbs": perc_red_cbs,
         "ibs_efetivo": ibs_efetiva,
         "cbs_efetivo": cbs_efetiva,
+        "valor_ibs": valor_ibs * (ibs_efetiva/100) if valor_ibs else 0, # Ajuste defensivo
+        "valor_cbs": valor_cbs * (cbs_efetiva/100) if valor_cbs else 0,
         "aliq_total_nova": aliq_total_nova,
         "valor_novo": valor_tributo_novo,
-        "diferenca": diferenca_valor
+        "diferenca": diferenca_valor,
+        "total_tributos": valor_tributo_novo, # Para compatibilidade
+        "carga_total_perc": aliq_total_nova, # Para compatibilidade
+        "valor_ibs": valor * (ibs_efetiva / 100),
+        "valor_cbs": valor * (cbs_efetiva / 100)
     }
 
 # --- 3. BUSCA CNAE MANUAL ---
@@ -111,23 +121,26 @@ def buscar_cnae(df_cnae, termo):
     )
     return df_cnae[mask]
 
-# --- 4. CONSULTA CNPJ VIA API ---
+# --- 4. CONSULTA CNPJ VIA API (ATUALIZADA PARA V2) ---
 def consultar_cnpj_api(cnpj_input):
     cnpj_limpo = re.sub(r'\D', '', cnpj_input)
     if len(cnpj_limpo) != 14:
         return {"erro": "CNPJ deve ter 14 dígitos."}
     
-    # Usando BrasilAPI V1 que retorna o cnae_fiscal direto
-    url = f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}"
+    # --- MUDANÇA AQUI: Trocamos 'v1' por 'v2' ---
+    url = f"https://brasilapi.com.br/api/cnpj/v2/{cnpj_limpo}"
+    
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15) # Aumentei um pouco o timeout
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 404:
-            return {"erro": "CNPJ não encontrado na Receita Federal."}
+            return {"erro": "CNPJ não encontrado na base da Receita (Verifique se o número está correto)."}
         elif response.status_code == 429:
-            return {"erro": "Muitas consultas. Aguarde um instante."}
+            return {"erro": "Muitas consultas ao mesmo tempo. Aguarde alguns segundos e tente novamente."}
+        elif response.status_code == 500:
+             return {"erro": "Instabilidade momentânea na BrasilAPI. Tente novamente em breve."}
         else:
-            return {"erro": f"Erro API: {response.status_code}"}
+            return {"erro": f"Erro inesperado na API: {response.status_code}"}
     except Exception as e:
-        return {"erro": f"Erro conexão: {str(e)}"}
+        return {"erro": f"Erro de conexão com a internet ou API fora do ar: {str(e)}"}
