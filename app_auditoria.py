@@ -36,7 +36,7 @@ tab_auditoria, tab_cnae_manual, tab_cnpj = st.tabs([
 ])
 
 # ==========================================================
-# ABA 1: AUDITORIA E SIMULADOR (MANTIDA)
+# ABA 1: AUDITORIA E SIMULADOR
 # ==========================================================
 with tab_auditoria:
     with st.sidebar:
@@ -183,7 +183,7 @@ with tab_cnae_manual:
         st.error("Arquivo CNAE não carregado.")
 
 # ==========================================================
-# ABA 3: CONSULTA POR CNPJ (ATUALIZADA E DEFENSIVA)
+# ABA 3: CONSULTA POR CNPJ (UNIVERSAL)
 # ==========================================================
 with tab_cnpj:
     st.header("🏢 Consulta Automatizada por CNPJ")
@@ -207,42 +207,51 @@ with tab_cnpj:
             # SUCESSO NA API
             st.success(f"Empresa localizada! (Fonte: {dados_empresa.get('fonte_dados', 'API')})")
             
+            # Padroniza nomes (Algumas APIs usam 'nome', outras 'razao_social')
+            razao = dados_empresa.get('razao_social') or dados_empresa.get('nome')
+            fantasia = dados_empresa.get('nome_fantasia') or dados_empresa.get('fantasia')
+            uf = dados_empresa.get('uf')
+
             with st.expander("📄 Dados Cadastrais", expanded=True):
                 c1, c2, c3 = st.columns(3)
-                c1.write(f"**Razão Social:** {dados_empresa.get('razao_social')}")
-                c2.write(f"**Fantasia:** {dados_empresa.get('nome_fantasia', '-')}")
-                c3.write(f"**UF:** {dados_empresa.get('uf')}")
+                c1.write(f"**Razão Social:** {razao}")
+                c2.write(f"**Fantasia:** {fantasia if fantasia else '-'}")
+                c3.write(f"**UF:** {uf}")
             
             # --- PROCESSAMENTO INTELIGENTE DOS CNAES ---
-            # Diferentes APIs retornam o CNAE com nomes diferentes. Vamos procurar todos.
-            
             lista_codigos_numericos = []
             
-            # 1. Tenta achar o CNAE Principal
+            # 1. CNAE Principal
             cnae_principal_cod = None
-            
-            # Verifica formato V1 / Minha Receita (cnae_fiscal: 1234567)
             if 'cnae_fiscal' in dados_empresa:
                 cnae_principal_cod = dados_empresa['cnae_fiscal']
-                
-            # Verifica formato V2 (cnae_fiscal_principal: {codigo: 1234567, ...})
             elif 'cnae_fiscal_principal' in dados_empresa:
+                # BrasilAPI V2
                 obj = dados_empresa['cnae_fiscal_principal']
                 if isinstance(obj, dict):
                     cnae_principal_cod = obj.get('codigo')
+            elif 'atividade_principal' in dados_empresa:
+                # ReceitaWS e outras
+                lista = dados_empresa['atividade_principal']
+                if isinstance(lista, list) and len(lista) > 0:
+                    cnae_principal_cod = lista[0].get('code')
             
             if cnae_principal_cod:
                 cod_limpo = re.sub(r'\D', '', str(cnae_principal_cod))
                 lista_codigos_numericos.append(cod_limpo)
 
-            # 2. Tenta achar CNAEs Secundários
-            cnaes_secundarios = dados_empresa.get('cnaes_secundarios', [])
-            
+            # 2. CNAEs Secundários
+            cnaes_secundarios = []
+            if 'cnaes_secundarios' in dados_empresa:
+                cnaes_secundarios = dados_empresa['cnaes_secundarios']
+            elif 'atividades_secundarias' in dados_empresa:
+                cnaes_secundarios = dados_empresa['atividades_secundarias']
+
             if isinstance(cnaes_secundarios, list):
                 for item in cnaes_secundarios:
                     if isinstance(item, dict):
-                        # Pega 'codigo' (V2) ou 'cnae_fiscal' (V1 às vezes varia)
-                        cod = item.get('codigo') or item.get('cnae_fiscal')
+                        # Tenta pegar 'codigo', 'cnae_fiscal' ou 'code'
+                        cod = item.get('codigo') or item.get('cnae_fiscal') or item.get('code')
                         if cod:
                             cod_limpo = re.sub(r'\D', '', str(cod))
                             lista_codigos_numericos.append(cod_limpo)
@@ -250,9 +259,9 @@ with tab_cnpj:
             st.subheader("🛠️ Serviços Compatíveis (LC 116)")
             
             if lista_codigos_numericos:
-                st.caption(f"Códigos CNAE encontrados na Receita: {', '.join(lista_codigos_numericos)}")
+                st.caption(f"Códigos CNAE encontrados: {', '.join(lista_codigos_numericos)}")
                 
-                # 3. BUSCA CNAE -> SERVIÇOS
+                # 3. BUSCA SERVIÇOS
                 if not df_cnae.empty and 'cnae_numeros' in df_cnae.columns:
                     resultado_cruzamento = df_cnae[df_cnae['cnae_numeros'].isin(lista_codigos_numericos)]
                     
@@ -270,10 +279,9 @@ with tab_cnpj:
                             hide_index=True
                         )
                         
-                        # 4. BUSCA SERVIÇOS -> NBS & CST
+                        # 4. BUSCA NBS & CST (DETALHAMENTO)
                         st.markdown("---")
                         st.subheader("📚 Detalhamento Completo (NBS e CST)")
-                        st.markdown("Abaixo estão as opções de NBS e Regras Tributárias compatíveis com os serviços identificados acima.")
                         
                         codigos_servicos_encontrados = resultado_cruzamento['item_lista_servico'].unique()
                         
@@ -296,16 +304,15 @@ with tab_cnpj:
                                     hide_index=True
                                 )
                             else:
-                                st.warning("Não foram encontrados códigos NBS correspondentes na base principal para estes serviços.")
+                                st.warning("Não foram encontrados NBS para os serviços identificados.")
                         else:
                             st.error("Base principal NBS não carregada.")
-
                     else:
-                        st.warning("Os CNAEs dessa empresa não possuem serviços correspondentes no seu arquivo 'cnae_lista_servicos.json'.")
+                        st.warning("CNAEs da empresa não possuem vínculo com a lista de serviços cadastrada.")
                 else:
-                    st.error("Erro no arquivo de dados CNAE local (Coluna numérica não criada).")
+                    st.error("Erro no arquivo de dados CNAE.")
             else:
-                st.warning("Não foram encontrados códigos CNAE no retorno da API.")
+                st.warning("Não foram encontrados CNAEs no retorno da API.")
                 
             with st.expander("Ver dados brutos da API (Debug)"):
                 st.json(dados_empresa)
