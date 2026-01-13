@@ -97,7 +97,6 @@ def calcular_comparativo(valor, iss, pis, cofins, ibs_ref, cbs_ref, codigo_tribu
         "aliq_total_nova": aliq_total_nova,
         "valor_novo": valor_tributo_novo,
         "diferenca": diferenca_valor,
-        # Campos extras para compatibilidade
         "total_tributos": valor_tributo_novo,
         "carga_total_perc": aliq_total_nova,
         "valor_ibs": valor * (ibs_efetiva / 100),
@@ -115,49 +114,43 @@ def buscar_cnae(df_cnae, termo):
     )
     return df_cnae[mask]
 
-# --- 4. CONSULTA CNPJ MULTI-FONTE (A SOLUÇÃO BLINDADA) ---
+# --- 4. CONSULTA CNPJ SUPER ROBUSTA (4 FONTES) ---
 def consultar_cnpj_api(cnpj_input):
-    """
-    Tenta consultar em múltiplas APIs até conseguir.
-    """
     cnpj_limpo = re.sub(r'\D', '', cnpj_input)
     if len(cnpj_limpo) != 14:
         return {"erro": "CNPJ deve ter 14 dígitos."}
     
-    # LISTA DE TENTATIVAS (URLs)
     fontes = [
-        # TENTATIVA 1: BrasilAPI V1 (Geralmente mais rápida)
         {"url": f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}", "tipo": "v1"},
-        
-        # TENTATIVA 2: BrasilAPI V2 (Mais detalhada, backup)
         {"url": f"https://brasilapi.com.br/api/cnpj/v2/{cnpj_limpo}", "tipo": "v2"},
-        
-        # TENTATIVA 3: Minha Receita (Outra API pública gratuita)
-        {"url": f"https://minhareceita.org/{cnpj_limpo}", "tipo": "minha_receita"}
+        {"url": f"https://minhareceita.org/{cnpj_limpo}", "tipo": "minha_receita"},
+        {"url": f"https://www.receitaws.com.br/v1/cnpj/{cnpj_limpo}", "tipo": "receitaws"} # Nova Fonte
     ]
     
     ultimo_erro = ""
-    
     for fonte in fontes:
         try:
-            # Timeout curto para não travar o app se uma estiver lenta
-            response = requests.get(fonte["url"], timeout=10)
+            # Timeout curto para pular rápido se travar
+            response = requests.get(fonte["url"], timeout=8)
             
             if response.status_code == 200:
                 dados = response.json()
-                dados['fonte_dados'] = fonte['tipo'] # Marca qual funcionou
+                
+                # ReceitaWS as vezes retorna 200 mas com status ERROR no json
+                if fonte['tipo'] == 'receitaws' and dados.get('status') == 'ERROR':
+                    ultimo_erro = dados.get('message', 'Erro na ReceitaWS')
+                    continue
+
+                dados['fonte_dados'] = fonte['tipo']
                 return dados
-            
+                
             elif response.status_code == 404:
-                # Se deu 404, provavelmente o CNPJ não existe mesmo, mas tentamos a próxima
-                ultimo_erro = "CNPJ não encontrado na base de dados."
-            
+                ultimo_erro = "CNPJ não encontrado."
             elif response.status_code == 429:
-                ultimo_erro = "Muitas consultas. API ocupada."
+                ultimo_erro = "API ocupada (Muitos pedidos)."
                 
         except Exception as e:
-            ultimo_erro = f"Erro de conexão: {str(e)}"
-            continue # Tenta a próxima fonte
+            ultimo_erro = f"Erro conexão: {str(e)}"
+            continue
             
-    # Se saiu do loop, nenhuma funcionou
-    return {"erro": f"Não foi possível consultar este CNPJ no momento em nenhuma base pública. ({ultimo_erro})"}
+    return {"erro": f"Não foi possível consultar este CNPJ. ({ultimo_erro})"}
