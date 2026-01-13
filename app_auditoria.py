@@ -183,7 +183,7 @@ with tab_cnae_manual:
         st.error("Arquivo CNAE não carregado.")
 
 # ==========================================================
-# ABA 3: CONSULTA POR CNPJ (ATUALIZADA: AGORA MOSTRA NBS/CST)
+# ABA 3: CONSULTA POR CNPJ (ATUALIZADA E DEFENSIVA)
 # ==========================================================
 with tab_cnpj:
     st.header("🏢 Consulta Automatizada por CNPJ")
@@ -198,14 +198,14 @@ with tab_cnpj:
         buscar_cnpj = st.button("🔍 Buscar Dados", type="primary")
 
     if buscar_cnpj and cnpj_digitado:
-        with st.spinner("Consultando Receita Federal..."):
+        with st.spinner("Consultando Bases Públicas (Receita Federal)..."):
             dados_empresa = motor.consultar_cnpj_api(cnpj_digitado)
         
         if "erro" in dados_empresa:
             st.error(dados_empresa["erro"])
         else:
             # SUCESSO NA API
-            st.success("Empresa localizada!")
+            st.success(f"Empresa localizada! (Fonte: {dados_empresa.get('fonte_dados', 'API')})")
             
             with st.expander("📄 Dados Cadastrais", expanded=True):
                 c1, c2, c3 = st.columns(3)
@@ -213,85 +213,99 @@ with tab_cnpj:
                 c2.write(f"**Fantasia:** {dados_empresa.get('nome_fantasia', '-')}")
                 c3.write(f"**UF:** {dados_empresa.get('uf')}")
             
-            # --- PROCESSAMENTO DOS CNAES ---
-            cnae_principal_cod = dados_empresa.get('cnae_fiscal')
-            if not cnae_principal_cod:
-                cnae_principal_obj = dados_empresa.get('cnae_fiscal_principal', {})
-                if isinstance(cnae_principal_obj, dict):
-                    cnae_principal_cod = cnae_principal_obj.get('codigo')
-
-            cnaes_secundarios = dados_empresa.get('cnaes_secundarios', [])
+            # --- PROCESSAMENTO INTELIGENTE DOS CNAES ---
+            # Diferentes APIs retornam o CNAE com nomes diferentes. Vamos procurar todos.
             
             lista_codigos_numericos = []
+            
+            # 1. Tenta achar o CNAE Principal
+            cnae_principal_cod = None
+            
+            # Verifica formato V1 / Minha Receita (cnae_fiscal: 1234567)
+            if 'cnae_fiscal' in dados_empresa:
+                cnae_principal_cod = dados_empresa['cnae_fiscal']
+                
+            # Verifica formato V2 (cnae_fiscal_principal: {codigo: 1234567, ...})
+            elif 'cnae_fiscal_principal' in dados_empresa:
+                obj = dados_empresa['cnae_fiscal_principal']
+                if isinstance(obj, dict):
+                    cnae_principal_cod = obj.get('codigo')
+            
             if cnae_principal_cod:
                 cod_limpo = re.sub(r'\D', '', str(cnae_principal_cod))
                 lista_codigos_numericos.append(cod_limpo)
+
+            # 2. Tenta achar CNAEs Secundários
+            cnaes_secundarios = dados_empresa.get('cnaes_secundarios', [])
             
-            for item in cnaes_secundarios:
-                if 'codigo' in item:
-                    cod_limpo = re.sub(r'\D', '', str(item['codigo']))
-                    lista_codigos_numericos.append(cod_limpo)
+            if isinstance(cnaes_secundarios, list):
+                for item in cnaes_secundarios:
+                    if isinstance(item, dict):
+                        # Pega 'codigo' (V2) ou 'cnae_fiscal' (V1 às vezes varia)
+                        cod = item.get('codigo') or item.get('cnae_fiscal')
+                        if cod:
+                            cod_limpo = re.sub(r'\D', '', str(cod))
+                            lista_codigos_numericos.append(cod_limpo)
             
             st.subheader("🛠️ Serviços Compatíveis (LC 116)")
-            st.caption(f"Códigos CNAE encontrados na Receita: {', '.join(lista_codigos_numericos)}")
             
-            # 1. BUSCA CNAE -> SERVIÇOS
-            if not df_cnae.empty and 'cnae_numeros' in df_cnae.columns:
-                resultado_cruzamento = df_cnae[df_cnae['cnae_numeros'].isin(lista_codigos_numericos)]
+            if lista_codigos_numericos:
+                st.caption(f"Códigos CNAE encontrados na Receita: {', '.join(lista_codigos_numericos)}")
                 
-                if not resultado_cruzamento.empty:
-                    st.info(f"Foram encontrados **{len(resultado_cruzamento)} serviços** vinculados aos CNAEs.")
-                    st.dataframe(
-                        resultado_cruzamento,
-                        column_config={
-                            "cnae": "CNAE",
-                            "descricao_cnae": "Atividade CNAE",
-                            "item_lista_servico": "Item LC 116",
-                            "descricao_item": "Serviço Permitido",
-                        },
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                # 3. BUSCA CNAE -> SERVIÇOS
+                if not df_cnae.empty and 'cnae_numeros' in df_cnae.columns:
+                    resultado_cruzamento = df_cnae[df_cnae['cnae_numeros'].isin(lista_codigos_numericos)]
                     
-                    # 2. BUSCA SERVIÇOS -> NBS & CST (NOVA FUNCIONALIDADE)
-                    st.markdown("---")
-                    st.subheader("📚 Detalhamento Completo (NBS e CST)")
-                    st.markdown("Abaixo estão as opções de NBS e Regras Tributárias compatíveis com os serviços identificados acima.")
-                    
-                    # Pega a lista única de serviços encontrados (Ex: ['7.02', '17.19'])
-                    codigos_servicos_encontrados = resultado_cruzamento['item_lista_servico'].unique()
-                    
-                    # Filtra a base principal (df) onde o 'Item LC 116' bate com os encontrados
-                    # Usamos .astype(str) e .strip() para garantir que espaços não atrapalhem
-                    if df is not None and not df.empty:
-                        # Limpa espaços em branco para garantir o match
-                        servicos_limpos = [str(s).strip() for s in codigos_servicos_encontrados]
+                    if not resultado_cruzamento.empty:
+                        st.info(f"Foram encontrados **{len(resultado_cruzamento)} serviços** vinculados aos CNAEs.")
+                        st.dataframe(
+                            resultado_cruzamento,
+                            column_config={
+                                "cnae": "CNAE",
+                                "descricao_cnae": "Atividade CNAE",
+                                "item_lista_servico": "Item LC 116",
+                                "descricao_item": "Serviço Permitido",
+                            },
+                            use_container_width=True,
+                            hide_index=True
+                        )
                         
-                        mask_nbs = df['Item LC 116'].astype(str).str.strip().isin(servicos_limpos)
-                        df_nbs_relacionados = df[mask_nbs]
+                        # 4. BUSCA SERVIÇOS -> NBS & CST
+                        st.markdown("---")
+                        st.subheader("📚 Detalhamento Completo (NBS e CST)")
+                        st.markdown("Abaixo estão as opções de NBS e Regras Tributárias compatíveis com os serviços identificados acima.")
                         
-                        if not df_nbs_relacionados.empty:
-                            st.dataframe(
-                                df_nbs_relacionados,
-                                column_config={
-                                    "Item LC 116": st.column_config.TextColumn("LC", width="small"),
-                                    "NBS": st.column_config.TextColumn("NBS", width="small"),
-                                    "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição Detalhada NBS", width="large"),
-                                    "cClassTrib": st.column_config.TextColumn("CST", width="small"), 
-                                    "nome cClassTrib": st.column_config.TextColumn("Regra Tributária", width="medium"),
-                                },
-                                use_container_width=True,
-                                hide_index=True
-                            )
+                        codigos_servicos_encontrados = resultado_cruzamento['item_lista_servico'].unique()
+                        
+                        if df is not None and not df.empty:
+                            servicos_limpos = [str(s).strip() for s in codigos_servicos_encontrados]
+                            mask_nbs = df['Item LC 116'].astype(str).str.strip().isin(servicos_limpos)
+                            df_nbs_relacionados = df[mask_nbs]
+                            
+                            if not df_nbs_relacionados.empty:
+                                st.dataframe(
+                                    df_nbs_relacionados,
+                                    column_config={
+                                        "Item LC 116": st.column_config.TextColumn("LC", width="small"),
+                                        "NBS": st.column_config.TextColumn("NBS", width="small"),
+                                        "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição Detalhada NBS", width="large"),
+                                        "cClassTrib": st.column_config.TextColumn("CST", width="small"), 
+                                        "nome cClassTrib": st.column_config.TextColumn("Regra Tributária", width="medium"),
+                                    },
+                                    use_container_width=True,
+                                    hide_index=True
+                                )
+                            else:
+                                st.warning("Não foram encontrados códigos NBS correspondentes na base principal para estes serviços.")
                         else:
-                            st.warning("Não foram encontrados códigos NBS correspondentes na base principal para estes serviços.")
-                    else:
-                        st.error("Base principal NBS não carregada.")
+                            st.error("Base principal NBS não carregada.")
 
+                    else:
+                        st.warning("Os CNAEs dessa empresa não possuem serviços correspondentes no seu arquivo 'cnae_lista_servicos.json'.")
                 else:
-                    st.warning("Os CNAEs dessa empresa não possuem serviços correspondentes no seu arquivo 'cnae_lista_servicos.json'.")
+                    st.error("Erro no arquivo de dados CNAE local (Coluna numérica não criada).")
             else:
-                st.error("Erro no arquivo de dados CNAE local (Coluna numérica não criada).")
+                st.warning("Não foram encontrados códigos CNAE no retorno da API.")
                 
-            with st.expander("Ver dados brutos da API"):
+            with st.expander("Ver dados brutos da API (Debug)"):
                 st.json(dados_empresa)
