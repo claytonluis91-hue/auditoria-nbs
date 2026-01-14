@@ -27,7 +27,6 @@ st.markdown("""
 if 'empresa_selecionada' not in st.session_state:
     st.session_state['empresa_selecionada'] = None
 
-# Novo estado para armazenar os serviços filtrados pelo CNPJ
 if 'filtro_servicos_cnpj' not in st.session_state:
     st.session_state['filtro_servicos_cnpj'] = None
 
@@ -57,7 +56,7 @@ if st.session_state['empresa_selecionada']:
     with col_btn_h1:
         if st.button("Limpar Consulta", type="secondary"):
             st.session_state['empresa_selecionada'] = None
-            st.session_state['filtro_servicos_cnpj'] = None # Limpa o filtro também
+            st.session_state['filtro_servicos_cnpj'] = None
             st.rerun()
 
 # --- ABAS ---
@@ -74,7 +73,6 @@ with tab_auditoria:
     with st.sidebar:
         st.header("🎛️ Filtros NBS")
         
-        # Aviso se houver filtro ativo pelo CNPJ
         if st.session_state['filtro_servicos_cnpj'] is not None:
             st.info(f"🔍 Filtrando pelos serviços do CNPJ consultado.")
             if st.button("Remover Filtro CNPJ"):
@@ -87,13 +85,10 @@ with tab_auditoria:
     
     df_view = df.copy()
     
-    # 1. APLICA FILTRO DO CNPJ (SE HOUVER)
+    # 1. APLICA FILTRO DO CNPJ
     if st.session_state['filtro_servicos_cnpj'] is not None:
         lista_servicos_cnpj = st.session_state['filtro_servicos_cnpj']
-        # Limpa espaços para garantir o match
         lista_servicos_clean = [str(s).strip() for s in lista_servicos_cnpj]
-        
-        # Filtra onde 'Item LC 116' está na lista do CNPJ
         mask_cnpj = df_view['Item LC 116'].astype(str).str.strip().isin(lista_servicos_clean)
         df_view = df_view[mask_cnpj]
 
@@ -125,11 +120,11 @@ with tab_auditoria:
                 "NBS": st.column_config.TextColumn("NBS", width="small"),
                 "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição", width="medium"),
                 "cClassTrib": st.column_config.TextColumn("CST", width="small"),
-                # --- COLUNAS OCULTAS AQUI ---
+                # Colunas ocultas para limpeza visual
                 "PS ONEROSA? (S/N)": None, 
                 "ADQ EXTERIOR? (S/N)": None,
                 "INDOP": None,
-                "nome cClassTrib": None # Oculta na lista pois já aparece no detalhe
+                "nome cClassTrib": None
             }
         )
 
@@ -282,20 +277,14 @@ with tab_cnpj:
         else:
             st.success(f"Empresa localizada! (Fonte: {dados_empresa.get('fonte_dados', 'API')})")
             
-            # SALVA NA SESSÃO
             st.session_state['empresa_selecionada'] = dados_empresa
             
-            # --- LÓGICA DE FILTRO AUTOMÁTICO (NOVA!) ---
-            # Vamos extrair os serviços e salvar no estado para a Aba 1 usar
+            # --- FILTRO AUTOMÁTICO PARA ABA 1 ---
             lista_servicos_encontrados = []
-            
-            # ... (Lógica de processamento de CNAE igual antes para pegar os códigos) ...
             lista_codigos_numericos = []
             
-            # 1. CNAE Principal
             cnae_principal_cod = None
-            if 'cnae_fiscal' in dados_empresa:
-                cnae_principal_cod = dados_empresa['cnae_fiscal']
+            if 'cnae_fiscal' in dados_empresa: cnae_principal_cod = dados_empresa['cnae_fiscal']
             elif 'cnae_fiscal_principal' in dados_empresa:
                 obj = dados_empresa['cnae_fiscal_principal']
                 if isinstance(obj, dict): cnae_principal_cod = obj.get('codigo')
@@ -306,32 +295,27 @@ with tab_cnpj:
             if cnae_principal_cod:
                 lista_codigos_numericos.append(re.sub(r'\D', '', str(cnae_principal_cod)))
 
-            # 2. CNAEs Secundários
             cnaes_secundarios = dados_empresa.get('cnaes_secundarios') or dados_empresa.get('atividades_secundarias') or []
             if isinstance(cnaes_secundarios, list):
                 for item in cnaes_secundarios:
                     if isinstance(item, dict):
                         cod = item.get('codigo') or item.get('cnae_fiscal') or item.get('code')
-                        if cod:
-                            lista_codigos_numericos.append(re.sub(r'\D', '', str(cod)))
+                        if cod: lista_codigos_numericos.append(re.sub(r'\D', '', str(cod)))
             
-            # Busca Serviços na base local
             if lista_codigos_numericos and not df_cnae.empty and 'cnae_numeros' in df_cnae.columns:
                 resultado_cruzamento = df_cnae[df_cnae['cnae_numeros'].isin(lista_codigos_numericos)]
-                
                 if not resultado_cruzamento.empty:
-                    # SALVA OS SERVIÇOS ENCONTRADOS NO ESTADO
                     lista_servicos_encontrados = resultado_cruzamento['item_lista_servico'].unique()
                     st.session_state['filtro_servicos_cnpj'] = lista_servicos_encontrados
             
-            st.rerun() # Recarrega para mostrar o header e aplicar os filtros na Aba 1
+            st.rerun()
 
-# Exibição dos dados se já tiver empresa (após rerun)
+# --- EXIBIÇÃO DE DETALHES NA ABA CNPJ ---
 if st.session_state['empresa_selecionada']:
     with tab_cnpj:
         dados_empresa = st.session_state['empresa_selecionada']
         
-        # Recalcula CNAEs para exibir (apenas visualização)
+        # Recalcula CNAEs para exibir
         lista_codigos_numericos = []
         cnae_principal_cod = None
         if 'cnae_fiscal' in dados_empresa: cnae_principal_cod = dados_empresa['cnae_fiscal']
@@ -358,10 +342,55 @@ if st.session_state['empresa_selecionada']:
                 
                 if not resultado_cruzamento.empty:
                     st.dataframe(resultado_cruzamento, use_container_width=True, hide_index=True)
-                    st.success("✅ Filtro aplicado automaticamente na Aba 'Auditoria NBS'.")
+                    
+                    st.markdown("---")
+                    st.subheader("📚 Detalhamento Completo (NBS e CST)")
+                    codigos_servicos_encontrados = resultado_cruzamento['item_lista_servico'].unique()
+                    
+                    if df is not None:
+                        servicos_limpos = [str(s).strip() for s in codigos_servicos_encontrados]
+                        mask_nbs = df['Item LC 116'].astype(str).str.strip().isin(servicos_limpos)
+                        df_nbs_relacionados = df[mask_nbs].copy() # Cria cópia para manipular
+                        
+                        if not df_nbs_relacionados.empty:
+                            # --- CRUZAMENTO PARA TRAZER LOCAL DE INCIDÊNCIA (NOVO!) ---
+                            if not df_indop.empty:
+                                # Garante string para o merge
+                                df_nbs_relacionados['INDOP'] = df_nbs_relacionados['INDOP'].astype(str)
+                                df_indop['CODIGO'] = df_indop['CODIGO'].astype(str)
+                                
+                                # Faz o Merge
+                                df_nbs_relacionados = df_nbs_relacionados.merge(
+                                    df_indop[['CODIGO', 'LOCAL_OPERACAO']], 
+                                    left_on='INDOP', 
+                                    right_on='CODIGO', 
+                                    how='left'
+                                )
+                            else:
+                                df_nbs_relacionados['LOCAL_OPERACAO'] = "-"
+
+                            # Exibe a tabela com as colunas pedidas
+                            st.dataframe(
+                                df_nbs_relacionados,
+                                column_config={
+                                    "Item LC 116": st.column_config.TextColumn("LC", width="small"),
+                                    "NBS": st.column_config.TextColumn("NBS", width="small"),
+                                    "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição Detalhada NBS", width="large"),
+                                    "cClassTrib": st.column_config.TextColumn("CST", width="small"), 
+                                    # Coluna Nova:
+                                    "LOCAL_OPERACAO": st.column_config.TextColumn("Local de Incidência", width="medium"),
+                                    
+                                    # Ocultar colunas técnicas do merge
+                                    "CODIGO": None,
+                                    "INDOP": None,
+                                    "nome cClassTrib": None # Já aparece a sigla CST
+                                },
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        else:
+                            st.warning("Sem NBS correspondente.")
                 else:
                     st.warning("Sem serviços na lista local para estes CNAEs.")
-            else:
-                st.error("Erro no arquivo CNAE.")
         else:
             st.warning("CNAEs não identificados.")
