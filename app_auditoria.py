@@ -120,7 +120,7 @@ with tab_auditoria:
                 "NBS": st.column_config.TextColumn("NBS", width="small"),
                 "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição", width="medium"),
                 "cClassTrib": st.column_config.TextColumn("CST", width="small"),
-                # Colunas ocultas para limpeza visual
+                # Colunas ocultas
                 "PS ONEROSA? (S/N)": None, 
                 "ADQ EXTERIOR? (S/N)": None,
                 "INDOP": None,
@@ -353,13 +353,11 @@ if st.session_state['empresa_selecionada']:
                         df_nbs_relacionados = df[mask_nbs].copy() # Cria cópia para manipular
                         
                         if not df_nbs_relacionados.empty:
-                            # --- CRUZAMENTO PARA TRAZER LOCAL DE INCIDÊNCIA (NOVO!) ---
+                            # --- CRUZAMENTO PARA TRAZER LOCAL DE INCIDÊNCIA ---
                             if not df_indop.empty:
-                                # Garante string para o merge
                                 df_nbs_relacionados['INDOP'] = df_nbs_relacionados['INDOP'].astype(str)
                                 df_indop['CODIGO'] = df_indop['CODIGO'].astype(str)
                                 
-                                # Faz o Merge
                                 df_nbs_relacionados = df_nbs_relacionados.merge(
                                     df_indop[['CODIGO', 'LOCAL_OPERACAO']], 
                                     left_on='INDOP', 
@@ -369,7 +367,7 @@ if st.session_state['empresa_selecionada']:
                             else:
                                 df_nbs_relacionados['LOCAL_OPERACAO'] = "-"
 
-                            # Exibe a tabela com as colunas pedidas
+                            # Exibe a tabela COM O CÓDIGO INDOP DE VOLTA
                             st.dataframe(
                                 df_nbs_relacionados,
                                 column_config={
@@ -377,13 +375,13 @@ if st.session_state['empresa_selecionada']:
                                     "NBS": st.column_config.TextColumn("NBS", width="small"),
                                     "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição Detalhada NBS", width="large"),
                                     "cClassTrib": st.column_config.TextColumn("CST", width="small"), 
-                                    # Coluna Nova:
+                                    # Coluna Restaurada e renomeada:
+                                    "INDOP": st.column_config.TextColumn("Cód. Local", width="small"),
                                     "LOCAL_OPERACAO": st.column_config.TextColumn("Local de Incidência", width="medium"),
                                     
-                                    # Ocultar colunas técnicas do merge
-                                    "CODIGO": None,
-                                    "INDOP": None,
-                                    "nome cClassTrib": None # Já aparece a sigla CST
+                                    # Ocultar colunas técnicas desnecessárias
+                                    "CODIGO": None, # Duplicado do merge
+                                    "nome cClassTrib": None 
                                 },
                                 use_container_width=True,
                                 hide_index=True
