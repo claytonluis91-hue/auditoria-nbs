@@ -4,6 +4,8 @@ import json
 import streamlit as st
 import requests
 import re
+from fpdf import FPDF
+from datetime import datetime
 
 # --- 1. FUNÇÃO DE CARREGAMENTO DE DADOS ---
 @st.cache_data
@@ -46,11 +48,8 @@ def carregar_dados():
             with open(path_cnae, 'r', encoding='utf-8') as f:
                 data_cnae = json.load(f)
             df_cnae = pd.DataFrame(data_cnae)
-            
-            # Limpa a coluna 'cnae' removendo traços, barras e pontos
             if not df_cnae.empty and 'cnae' in df_cnae.columns:
                 df_cnae['cnae_numeros'] = df_cnae['cnae'].astype(str).apply(lambda x: re.sub(r'\D', '', x))
-                
         except:
             df_cnae = pd.DataFrame()
     else:
@@ -114,7 +113,7 @@ def buscar_cnae(df_cnae, termo):
     )
     return df_cnae[mask]
 
-# --- 4. CONSULTA CNPJ SUPER ROBUSTA (4 FONTES) ---
+# --- 4. CONSULTA CNPJ BLINDADA ---
 def consultar_cnpj_api(cnpj_input):
     cnpj_limpo = re.sub(r'\D', '', cnpj_input)
     if len(cnpj_limpo) != 14:
@@ -124,33 +123,117 @@ def consultar_cnpj_api(cnpj_input):
         {"url": f"https://brasilapi.com.br/api/cnpj/v1/{cnpj_limpo}", "tipo": "v1"},
         {"url": f"https://brasilapi.com.br/api/cnpj/v2/{cnpj_limpo}", "tipo": "v2"},
         {"url": f"https://minhareceita.org/{cnpj_limpo}", "tipo": "minha_receita"},
-        {"url": f"https://www.receitaws.com.br/v1/cnpj/{cnpj_limpo}", "tipo": "receitaws"} # Nova Fonte
+        {"url": f"https://www.receitaws.com.br/v1/cnpj/{cnpj_limpo}", "tipo": "receitaws"}
     ]
     
     ultimo_erro = ""
     for fonte in fontes:
         try:
-            # Timeout curto para pular rápido se travar
             response = requests.get(fonte["url"], timeout=8)
-            
             if response.status_code == 200:
                 dados = response.json()
-                
-                # ReceitaWS as vezes retorna 200 mas com status ERROR no json
                 if fonte['tipo'] == 'receitaws' and dados.get('status') == 'ERROR':
                     ultimo_erro = dados.get('message', 'Erro na ReceitaWS')
                     continue
-
                 dados['fonte_dados'] = fonte['tipo']
                 return dados
-                
             elif response.status_code == 404:
                 ultimo_erro = "CNPJ não encontrado."
             elif response.status_code == 429:
-                ultimo_erro = "API ocupada (Muitos pedidos)."
-                
+                ultimo_erro = "API ocupada."
         except Exception as e:
             ultimo_erro = f"Erro conexão: {str(e)}"
             continue
             
-    return {"erro": f"Não foi possível consultar este CNPJ. ({ultimo_erro})"}
+    return {"erro": f"Não foi possível consultar. ({ultimo_erro})"}
+
+# --- 5. GERADOR DE RELATÓRIO PDF (NOVA FUNCIONALIDADE) ---
+class PDFReport(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 15)
+        self.cell(0, 10, 'Relatório de Análise Fiscal - LC 214/2023', 0, 1, 'C')
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Página {self.page_no()}', 0, 0, 'C')
+
+def gerar_relatorio_pdf(dados_empresa, dados_simulacao, dados_servico):
+    pdf = PDFReport()
+    pdf.add_page()
+    pdf.set_font('Arial', '', 12)
+    
+    # 1. Dados da Empresa (se houver)
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 10, '1. Dados da Empresa', 0, 1)
+    pdf.set_font('Arial', '', 12)
+    
+    if dados_empresa:
+        razao = dados_empresa.get('razao_social') or dados_empresa.get('nome') or "Não informado"
+        cnpj = dados_empresa.get('cnpj') or "Não informado"
+        pdf.cell(0, 8, f"Razão Social: {razao}", 0, 1)
+        pdf.cell(0, 8, f"CNPJ: {cnpj}", 0, 1)
+    else:
+        pdf.cell(0, 8, "Simulação avulsa (Sem empresa vinculada)", 0, 1)
+    pdf.ln(5)
+
+    # 2. Dados do Serviço
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 10, '2. Serviço Analisado (NBS)', 0, 1)
+    pdf.set_font('Arial', '', 12)
+    pdf.multi_cell(0, 8, f"NBS: {dados_servico.get('NBS', '-')}")
+    pdf.multi_cell(0, 8, f"Descrição: {dados_servico.get('DESCRIÇÃO NBS', '-')}")
+    pdf.multi_cell(0, 8, f"Item LC 116: {dados_servico.get('Item LC 116', '-')}")
+    pdf.ln(5)
+
+    # 3. Resultado da Simulação
+    if dados_simulacao:
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, '3. Comparativo Tributário', 0, 1)
+        
+        # Cabeçalho Tabela
+        pdf.set_fill_color(200, 220, 255)
+        pdf.set_font('Arial', 'B', 10)
+        pdf.cell(60, 10, 'Cenário', 1, 0, 'C', 1)
+        pdf.cell(40, 10, 'Alíquota Total', 1, 0, 'C', 1)
+        pdf.cell(40, 10, 'Valor Tributo', 1, 1, 'C', 1)
+        
+        # Linha Atual
+        pdf.set_font('Arial', '', 10)
+        pdf.cell(60, 10, 'Sistema Atual (PIS/COFINS/ISS)', 1, 0)
+        pdf.cell(40, 10, f"{dados_simulacao['aliq_total_atual']:.2f}%", 1, 0, 'C')
+        pdf.cell(40, 10, f"R$ {dados_simulacao['valor_atual']:,.2f}", 1, 1, 'C')
+        
+        # Linha Reforma
+        pdf.cell(60, 10, 'Reforma (IBS/CBS)', 1, 0)
+        pdf.cell(40, 10, f"{dados_simulacao['aliq_total_nova']:.2f}%", 1, 0, 'C')
+        pdf.cell(40, 10, f"R$ {dados_simulacao['valor_novo']:,.2f}", 1, 1, 'C')
+        
+        pdf.ln(5)
+        
+        # Conclusão
+        pdf.set_font('Arial', 'B', 12)
+        dif = dados_simulacao['diferenca']
+        if dif > 0:
+            pdf.set_text_color(180, 0, 0) # Vermelho
+            pdf.cell(0, 10, f"Impacto: Aumento de Carga de R$ {dif:,.2f}", 0, 1)
+        elif dif < 0:
+            pdf.set_text_color(0, 100, 0) # Verde
+            pdf.cell(0, 10, f"Impacto: Economia Estimada de R$ {abs(dif):,.2f}", 0, 1)
+        else:
+            pdf.cell(0, 10, "Impacto: Neutro (Sem alteração de valor)", 0, 1)
+            
+        pdf.set_text_color(0, 0, 0)
+        
+        if dados_simulacao['reducao_ibs'] > 0:
+            pdf.ln(2)
+            pdf.set_font('Arial', 'I', 10)
+            pdf.multi_cell(0, 8, f"Nota: Aplicada regra de benefício com redução de {dados_simulacao['reducao_ibs']}% na base do IBS/CBS.")
+
+    # Data
+    pdf.ln(10)
+    pdf.set_font('Arial', 'I', 10)
+    pdf.cell(0, 10, f"Simulação gerada em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", 0, 1, 'R')
+
+    return pdf.output(dest='S').encode('latin-1', 'replace') # Retorna bytes
