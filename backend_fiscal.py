@@ -15,7 +15,9 @@ def carregar_dados():
     path_main = os.path.join(pasta_atual, "AnexoVIII_Convertido.json")
     path_indop = os.path.join(pasta_atual, "IndOp_Descricoes.json")
     path_regras = os.path.join(pasta_atual, "classificacao_tributaria.json")
-    path_cnae = os.path.join(pasta_atual, "cnae_lista_servicos.json")
+    
+    # ATENÇÃO: Agora apontamos para o NOVO arquivo
+    path_cnae = os.path.join(pasta_atual, "lista_servicos_completa.json")
     
     # 1. Carrega Principal (NBS)
     if not os.path.exists(path_main):
@@ -42,15 +44,47 @@ def carregar_dados():
     else:
         df_regras = pd.DataFrame()
 
-    # 4. Carrega CNAE e CRIA COLUNA NUMÉRICA LIMPA
+    # 4. Carrega CNAE (ADAPTADO PARA O NOVO ARQUIVO)
     if os.path.exists(path_cnae):
         try:
             with open(path_cnae, 'r', encoding='utf-8') as f:
                 data_cnae = json.load(f)
             df_cnae = pd.DataFrame(data_cnae)
-            if not df_cnae.empty and 'cnae' in df_cnae.columns:
+            
+            if not df_cnae.empty:
+                # --- LIMPEZA E TRADUÇÃO DAS COLUNAS (NOVO!) ---
+                
+                # 1. Remove linhas de cabeçalho "lixo" (onde cnae não é número)
+                # Filtra apenas onde a coluna 'cnae' contém dígitos
+                df_cnae = df_cnae[df_cnae['cnae'].astype(str).str.contains(r'\d', na=False)]
+                
+                # 2. Renomeia as colunas para o padrão do sistema
+                # No novo arquivo:
+                # 'cnae' -> É o número limpo (ex: 6201501)
+                # 'descricao_cnae' -> É o formatado (ex: 6201-5/01)
+                # 'item_lista_servico' -> É a Descrição do CNAE
+                # 'descricao_item' -> É o Código LC 116 (ex: 01,01)
+                # 'observacoes' -> É a Descrição do Item LC
+                
+                df_cnae = df_cnae.rename(columns={
+                    'cnae': 'cnae_numeros_raw', # Guardamos o original numérico
+                    'descricao_cnae': 'cnae',   # Esse vira o CNAE visual (formatado)
+                    'item_lista_servico': 'descricao_cnae', # Descrição da atividade
+                    'descricao_item': 'item_lista_servico', # Código LC
+                    'observacoes': 'descricao_item' # Descrição LC
+                })
+                
+                # 3. Corrige o Código LC 116 (Troca vírgula por ponto: "01,01" -> "1.01")
+                df_cnae['item_lista_servico'] = df_cnae['item_lista_servico'].astype(str).str.replace(',', '.')
+                # Remove zero à esquerda se necessário (ex: "01.01" -> "1.01") para bater com outras bases
+                df_cnae['item_lista_servico'] = df_cnae['item_lista_servico'].apply(lambda x: x.lstrip('0') if x.startswith('0') else x)
+
+                # 4. Garante a coluna de busca numérica (CRUCIAL PARA A BUSCA POR CNPJ)
+                # Usa a coluna que já veio numérica ou limpa a formatada por garantia
                 df_cnae['cnae_numeros'] = df_cnae['cnae'].astype(str).apply(lambda x: re.sub(r'\D', '', x))
-        except:
+                
+        except Exception as e:
+            st.error(f"Erro ao processar novo arquivo CNAE: {e}")
             df_cnae = pd.DataFrame()
     else:
         df_cnae = pd.DataFrame()
@@ -106,6 +140,8 @@ def calcular_comparativo(valor, iss, pis, cofins, ibs_ref, cbs_ref, codigo_tribu
 def buscar_cnae(df_cnae, termo):
     if df_cnae.empty or not termo:
         return pd.DataFrame()
+    
+    # Adaptação: busca também na descrição do item LC (que agora está na coluna renomeada descricao_item)
     mask = (
         df_cnae['cnae'].astype(str).str.contains(termo, case=False) |
         df_cnae['descricao_cnae'].str.contains(termo, case=False) |
@@ -113,7 +149,7 @@ def buscar_cnae(df_cnae, termo):
     )
     return df_cnae[mask]
 
-# --- 4. CONSULTA CNPJ BLINDADA ---
+# --- 4. CONSULTA CNPJ BLINDADA (MANTIDA) ---
 def consultar_cnpj_api(cnpj_input):
     cnpj_limpo = re.sub(r'\D', '', cnpj_input)
     if len(cnpj_limpo) != 14:
@@ -147,7 +183,7 @@ def consultar_cnpj_api(cnpj_input):
             
     return {"erro": f"Não foi possível consultar. ({ultimo_erro})"}
 
-# --- 5. GERADOR DE RELATÓRIO PDF (NOVA FUNCIONALIDADE) ---
+# --- 5. GERADOR DE RELATÓRIO PDF (MANTIDO) ---
 class PDFReport(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 15)
@@ -164,7 +200,7 @@ def gerar_relatorio_pdf(dados_empresa, dados_simulacao, dados_servico):
     pdf.add_page()
     pdf.set_font('Arial', '', 12)
     
-    # 1. Dados da Empresa (se houver)
+    # 1. Dados da Empresa
     pdf.set_font('Arial', 'B', 14)
     pdf.cell(0, 10, '1. Dados da Empresa', 0, 1)
     pdf.set_font('Arial', '', 12)
@@ -187,53 +223,41 @@ def gerar_relatorio_pdf(dados_empresa, dados_simulacao, dados_servico):
     pdf.multi_cell(0, 8, f"Item LC 116: {dados_servico.get('Item LC 116', '-')}")
     pdf.ln(5)
 
-    # 3. Resultado da Simulação
+    # 3. Resultado
     if dados_simulacao:
         pdf.set_font('Arial', 'B', 14)
         pdf.cell(0, 10, '3. Comparativo Tributário', 0, 1)
         
-        # Cabeçalho Tabela
         pdf.set_fill_color(200, 220, 255)
         pdf.set_font('Arial', 'B', 10)
         pdf.cell(60, 10, 'Cenário', 1, 0, 'C', 1)
         pdf.cell(40, 10, 'Alíquota Total', 1, 0, 'C', 1)
         pdf.cell(40, 10, 'Valor Tributo', 1, 1, 'C', 1)
         
-        # Linha Atual
         pdf.set_font('Arial', '', 10)
         pdf.cell(60, 10, 'Sistema Atual (PIS/COFINS/ISS)', 1, 0)
         pdf.cell(40, 10, f"{dados_simulacao['aliq_total_atual']:.2f}%", 1, 0, 'C')
         pdf.cell(40, 10, f"R$ {dados_simulacao['valor_atual']:,.2f}", 1, 1, 'C')
         
-        # Linha Reforma
         pdf.cell(60, 10, 'Reforma (IBS/CBS)', 1, 0)
         pdf.cell(40, 10, f"{dados_simulacao['aliq_total_nova']:.2f}%", 1, 0, 'C')
         pdf.cell(40, 10, f"R$ {dados_simulacao['valor_novo']:,.2f}", 1, 1, 'C')
-        
         pdf.ln(5)
         
-        # Conclusão
         pdf.set_font('Arial', 'B', 12)
         dif = dados_simulacao['diferenca']
         if dif > 0:
-            pdf.set_text_color(180, 0, 0) # Vermelho
+            pdf.set_text_color(180, 0, 0)
             pdf.cell(0, 10, f"Impacto: Aumento de Carga de R$ {dif:,.2f}", 0, 1)
         elif dif < 0:
-            pdf.set_text_color(0, 100, 0) # Verde
+            pdf.set_text_color(0, 100, 0)
             pdf.cell(0, 10, f"Impacto: Economia Estimada de R$ {abs(dif):,.2f}", 0, 1)
         else:
-            pdf.cell(0, 10, "Impacto: Neutro (Sem alteração de valor)", 0, 1)
-            
+            pdf.cell(0, 10, "Impacto: Neutro", 0, 1)
         pdf.set_text_color(0, 0, 0)
-        
-        if dados_simulacao['reducao_ibs'] > 0:
-            pdf.ln(2)
-            pdf.set_font('Arial', 'I', 10)
-            pdf.multi_cell(0, 8, f"Nota: Aplicada regra de benefício com redução de {dados_simulacao['reducao_ibs']}% na base do IBS/CBS.")
 
-    # Data
     pdf.ln(10)
     pdf.set_font('Arial', 'I', 10)
-    pdf.cell(0, 10, f"Simulação gerada em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", 0, 1, 'R')
+    pdf.cell(0, 10, f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", 0, 1, 'R')
 
-    return pdf.output(dest='S').encode('latin-1', 'replace') # Retorna bytes
+    return pdf.output(dest='S').encode('latin-1', 'replace')
