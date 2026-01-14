@@ -8,7 +8,9 @@ st.set_page_config(page_title="Auditor Fiscal - LC 214", page_icon="⚖️", lay
 
 st.markdown("""
     <style>
-        .block-container { padding-top: 1.5rem; padding-bottom: 3rem; }
+        /* AUMENTEI O ESPAÇAMENTO DO TOPO AQUI PARA 5rem */
+        .block-container { padding-top: 5rem; padding-bottom: 3rem; }
+        
         .analise-container {
             background-color: #f8f9fa; padding: 20px; border-radius: 12px;
             border: 1px solid #dee2e6; margin-top: 20px;
@@ -257,7 +259,9 @@ with tab_cnpj:
             elif 'atividade_principal' in dados_empresa:
                 l = dados_empresa['atividade_principal']
                 if isinstance(l, list) and len(l)>0: cnae_p = l[0].get('code')
-            if cnae_p: lista_codigos_numericos.append(re.sub(r'\D', '', str(cnae_p)))
+            
+            if cnae_p:
+                lista_codigos_numericos.append(re.sub(r'\D', '', str(cnae_p)))
 
             cnaes_sec = dados_empresa.get('cnaes_secundarios') or dados_empresa.get('atividades_secundarias') or []
             if isinstance(cnaes_sec, list):
@@ -266,11 +270,13 @@ with tab_cnpj:
                         c = i.get('codigo') or i.get('cnae_fiscal') or i.get('code')
                         if c: lista_codigos_numericos.append(re.sub(r'\D', '', str(c)))
             
+            # Busca na base local
             if lista_codigos_numericos and not df_cnae.empty and 'cnae_numeros' in df_cnae.columns:
                 resultado_cruzamento = df_cnae[df_cnae['cnae_numeros'].isin(lista_codigos_numericos)]
                 if not resultado_cruzamento.empty:
                     lista_servicos = resultado_cruzamento['item_lista_servico'].unique()
                     st.session_state['filtro_servicos_cnpj'] = lista_servicos
+            
             st.rerun()
 
 if st.session_state['empresa_selecionada']:
@@ -335,7 +341,7 @@ if st.session_state['empresa_selecionada']:
                                 use_container_width=True, hide_index=True
                             )
                             
-                            # --- BOTÕES DE EXPORTAÇÃO (AQUI É A NOVIDADE!) ---
+                            # --- BOTÕES DE EXPORTAÇÃO ---
                             st.write("")
                             c_down1, c_down2, c_null = st.columns([1, 1, 3])
                             
