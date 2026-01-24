@@ -2,6 +2,14 @@ import streamlit as st
 import pandas as pd
 import backend_fiscal as motor
 import re
+import streamlit as st
+
+# Botão na barra lateral para voltar ao Portal
+with st.sidebar:
+    st.markdown("---")
+    # Substitua pelo LINK REAL do seu NOVO Portal que você criou no Passo 1
+    st.link_button("🏠 Voltar ao Portal Principal", "https://auditoria-fiscal.streamlit.app/")
+    st.markdown("---")
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Auditor Fiscal - LC 214", page_icon="⚖️", layout="wide")
@@ -369,3 +377,4 @@ if st.session_state['empresa_selecionada']:
                     st.warning("CNAEs sem correspondência na lista.")
             else:
                 st.error("Erro dados CNAE.")
+
