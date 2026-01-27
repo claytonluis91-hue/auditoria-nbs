@@ -117,8 +117,7 @@ with st.sidebar:
     lista_trib = df['nome cClassTrib'].unique() if 'nome cClassTrib' in df.columns else []
     filtro_trib = st.multiselect("⚖️ Filtrar por Regra (CST):", options=lista_trib)
     
-    st.markdown("---")
-    st.markdown("Developed by **Clayton Bueno**")
+    st.info("💡 Dica: Na aba Auditoria, selecione uma linha da tabela para ver o simulador de cálculo.")
 
 # ==========================================================
 # ÁREA PRINCIPAL
