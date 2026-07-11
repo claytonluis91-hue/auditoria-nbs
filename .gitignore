@@ -1,0 +1,27 @@
+# Ambiente local
+.venv/
+venv/
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit: nunca publicar segredos
+.streamlit/secrets.toml
+
+# Ferramentas locais
+.agents/
+.codex/
+.vscode/
+.idea/
+
+# Sistema e logs
+*.log
+Thumbs.db
+.DS_Store

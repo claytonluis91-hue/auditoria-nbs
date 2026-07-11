@@ -1,450 +1,746 @@
-import streamlit as st
-import pandas as pd
-import backend_fiscal as motor
-import re
+"""Interface Streamlit da Auditoria NBS."""
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
+from __future__ import annotations
+
+import importlib
+import re
+from typing import Any
+
+import pandas as pd
+import streamlit as st
+
+import backend_fiscal as motor
+
+
+# O Streamlit pode recarregar apenas este arquivo e manter uma versão anterior
+# do backend em memória. Recarregamos o motor somente quando uma função exigida
+# pela interface atual ainda não estiver disponível.
+FUNCOES_MOTOR_OBRIGATORIAS = (
+    "formatar_cnpj",
+    "preparar_dados_empresa",
+    "resumir_combinacoes",
+    "filtrar_combinacoes",
+)
+if any(not hasattr(motor, nome) for nome in FUNCOES_MOTOR_OBRIGATORIAS):
+    importlib.invalidate_caches()
+    motor = importlib.reload(motor)
+
+
 st.set_page_config(
-    page_title="Auditor Fiscal - LC 214", 
-    page_icon="⚖️", 
+    page_title="Auditoria NBS — Reforma Tributária",
+    page_icon="⚖️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# --- ESTILIZAÇÃO CSS (VISUAL NFE) ---
-st.markdown("""
+st.markdown(
+    """
     <style>
-        /* Ajuste do topo para não cortar com a barra do Streamlit */
-        .block-container { padding-top: 3rem; padding-bottom: 3rem; }
-        
-        /* CARD PRINCIPAL (Efeito Sombra) */
-        .css-card {
-            background-color: white; 
-            padding: 20px; 
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
-            border: 1px solid #f0f2f6;
-            margin-bottom: 20px;
-        }
-
-        /* HEADER DA EMPRESA (Estilo Dashboard Azul) */
-        .empresa-header {
-            background: linear-gradient(90deg, #0052cc 0%, #007bff 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .empresa-header h3 { color: white; margin: 0; font-size: 1.5rem; font-weight: 600; }
-        .empresa-header p { color: #e0eeff; margin: 0; font-size: 1rem; }
-        
-        /* CONTAINER DE ANÁLISE (Onde fica o simulador) */
-        .analise-container {
-            background-color: #ffffff;
-            padding: 25px;
-            border-radius: 12px;
-            border-left: 6px solid #007bff;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            margin-top: 20px;
-        }
-
-        /* BADGES PERSONALIZADOS */
-        .badge-verde { 
-            background-color: #d1fae5; color: #065f46; 
-            padding: 4px 10px; border-radius: 20px; 
-            font-weight: 600; font-size: 0.85rem; border: 1px solid #a7f3d0;
-        }
-        .badge-cinza { 
-            background-color: #f3f4f6; color: #374151; 
-            padding: 4px 10px; border-radius: 20px; 
-            font-weight: 600; font-size: 0.85rem; border: 1px solid #e5e7eb;
-        }
-
-        /* AJUSTE DE MÉTRICAS */
-        div[data-testid="stMetric"] {
-            background-color: #f8f9fa;
-            border: 1px solid #e9ecef;
-            padding: 15px;
-            border-radius: 8px;
-        }
+      :root { --azul:#174a78; --azul-claro:#eaf2f8; --borda:#d9e3ec; --texto:#182433; }
+      .block-container { padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1500px; }
+      .app-header {
+        background:#fff; border:1px solid var(--borda); border-left:6px solid var(--azul);
+        padding:1.15rem 1.35rem; border-radius:14px; margin-bottom:1rem;
+        box-shadow:0 4px 12px rgba(23,74,120,.07);
+      }
+      .app-header h1 { color:var(--azul); font-size:1.8rem; margin:0 0 .25rem 0; }
+      .app-header p { color:#526273; margin:0; }
+      .company-strip {
+        background:#f7fafc; border:1px solid var(--borda); padding:.85rem 1rem;
+        border-radius:12px; margin:.7rem 0 1rem 0;
+      }
+      .company-strip strong { color:var(--azul); }
+      .empty-state {
+        background:#f7fafc; border:1px dashed #aebdcc; border-radius:14px;
+        padding:1.5rem; text-align:center; margin:1rem 0;
+      }
+      .detail-card { background:#f8fbfd; border:1px solid var(--borda); border-radius:12px; padding:1rem; }
+      .status-ok { color:#086444; background:#dff4e9; border-radius:999px; padding:.2rem .65rem; font-weight:650; }
+      .status-review { color:#805500; background:#fff1c7; border-radius:999px; padding:.2rem .65rem; font-weight:650; }
+      div[data-testid="stMetric"] { background:#f8fbfd; border:1px solid var(--borda); padding:12px; border-radius:12px; }
+      div[data-testid="stMetricValue"] { font-variant-numeric:tabular-nums; }
+      [data-testid="stSidebar"] { border-right:1px solid var(--borda); }
+      .stDataFrame { font-variant-numeric:tabular-nums; }
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-# --- INICIALIZAÇÃO DO ESTADO ---
-if 'empresa_selecionada' not in st.session_state: st.session_state['empresa_selecionada'] = None
-if 'filtro_servicos_cnpj' not in st.session_state: st.session_state['filtro_servicos_cnpj'] = None
 
-# --- CARREGAMENTO DOS DADOS ---
-df, df_indop, df_regras, df_cnae = motor.carregar_dados()
+ETAPAS = ["1 · Empresa", "2 · Classificação", "3 · Simulação", "4 · Relatórios"]
+ESTADO_INICIAL = {
+    "empresa_selecionada": None,
+    "relatorio_cnpj": None,
+    "relatorio_manual": None,
+    "servico_selecionado": None,
+    "grupo_selecionado": None,
+    "ultima_simulacao": None,
+    "servico_simulado": None,
+    "arquivos_relatorio": None,
+    "etapa_atual": ETAPAS[0],
+    "etapa_pendente": None,
+    "origem_classificacao": "CNPJ consultado",
+}
+for chave, valor in ESTADO_INICIAL.items():
+    if chave not in st.session_state:
+        st.session_state[chave] = valor
 
-if df is None:
-    st.error("⚠️ Base de dados não encontrada. Verifique os arquivos JSON.")
+if st.session_state.etapa_pendente:
+    st.session_state.etapa_atual = st.session_state.etapa_pendente
+    st.session_state.etapa_pendente = None
+
+
+def ir_para(etapa: str) -> None:
+    st.session_state.etapa_pendente = etapa
+    st.rerun()
+
+
+def limpar_empresa() -> None:
+    st.session_state.empresa_selecionada = None
+    st.session_state.relatorio_cnpj = None
+    st.session_state.servico_selecionado = None
+    st.session_state.grupo_selecionado = None
+    st.session_state.ultima_simulacao = None
+    st.session_state.servico_simulado = None
+    st.session_state.arquivos_relatorio = None
+
+
+def nome_empresa(dados: dict[str, Any]) -> str:
+    return str(dados.get("razao_social") or dados.get("nome") or "Empresa consultada")
+
+
+def moeda_br(valor: float) -> str:
+    texto = f"{float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {texto}"
+
+
+def servico_a_partir_combinacao(linha: pd.Series | dict[str, Any]) -> dict[str, Any]:
+    return {
+        "Item LC 116": linha.get("Item LC 116", ""),
+        "NBS": linha.get("NBS", ""),
+        "DESCRIÇÃO NBS": linha.get("Descrição NBS", ""),
+        "cClassTrib": linha.get("cClassTrib", ""),
+        "nome cClassTrib": linha.get("Classificação Tributária", ""),
+        "CNAE": linha.get("CNAE", ""),
+    }
+
+
+try:
+    df, df_indop, df_regras, df_cnae = motor.carregar_dados()
+except (OSError, ValueError, KeyError) as erro:
+    st.error(f"Não foi possível carregar as bases: {erro}")
     st.stop()
 
-# ==========================================================
-# SIDEBAR (NAVEGAÇÃO E FILTROS)
-# ==========================================================
+if df is None:
+    st.error("Base principal não encontrada. Verifique os arquivos JSON do projeto.")
+    st.stop()
+
+integridade = motor.validar_integridade_dados(df, df_indop, df_regras, df_cnae)
+
+
 with st.sidebar:
-    # 1. BOTÃO DE VOLTAR AO PORTAL (Seu Menu Externo)
-    st.markdown("### 🌐 Navegação")
-    # Substitua pelo link real se mudar
-    st.link_button("⬅️ Voltar ao Menu Principal", "https://auditoria-fiscal.streamlit.app/", use_container_width=True)
-    st.markdown("---")
-
-    # 2. FILTROS DA AUDITORIA
-    st.header("🎛️ Filtros Avançados")
-    
-    # Filtro Dinâmico de CNPJ
-    if st.session_state['filtro_servicos_cnpj'] is not None:
-        st.success("🏢 Filtro: Empresa Ativa")
-        st.caption("Vendo apenas serviços do CNPJ consultado.")
-        if st.button("🔄 Limpar Filtro CNPJ", use_container_width=True):
-            st.session_state['filtro_servicos_cnpj'] = None
-            st.rerun()
+    st.markdown("### Auditoria NBS")
+    st.caption(f"Base local · versão {integridade['versao_dados']}")
+    st.link_button(
+        "Voltar ao menu principal",
+        "https://auditoria-fiscal.streamlit.app/",
+        width="stretch",
+    )
+    st.divider()
+    st.markdown("#### Contexto atual")
+    if st.session_state.empresa_selecionada:
+        empresa_sidebar = st.session_state.empresa_selecionada
+        st.write(f"**{nome_empresa(empresa_sidebar)}**")
+        st.caption(motor.formatar_cnpj(empresa_sidebar.get("cnpj")))
+        if st.button("Trocar empresa", width="stretch"):
+            limpar_empresa()
+            ir_para(ETAPAS[0])
     else:
-        # Se tem empresa mas não está filtrando, oferece o filtro
-        if st.session_state['empresa_selecionada']:
-            if st.button("🎯 Filtrar p/ Empresa Selecionada", use_container_width=True):
-                st.rerun()
+        st.info("Nenhuma empresa selecionada.")
 
-    st.write("") # Espaço
-    termo = st.text_input("🔎 Pesquisar Serviço:", placeholder="Ex: Construção, 7.02...").lower()
-    
-    lista_trib = df['nome cClassTrib'].unique() if 'nome cClassTrib' in df.columns else []
-    filtro_trib = st.multiselect("⚖️ Filtrar por Regra (CST):", options=lista_trib)
-    
-    st.info("💡 Dica: Na aba Auditoria, selecione uma linha da tabela para ver o simulador de cálculo.")
+    if st.session_state.servico_selecionado:
+        servico_sidebar = st.session_state.servico_selecionado
+        st.write(f"**NBS selecionada:** {servico_sidebar.get('NBS', '-')}")
+        st.caption(f"Item LC 116 {servico_sidebar.get('Item LC 116', '-')}")
 
-# ==========================================================
-# ÁREA PRINCIPAL
-# ==========================================================
+    with st.expander("Qualidade das bases"):
+        st.write(f"NBS: **{integridade['registros_nbs']:,}**")
+        st.write(f"Vínculos CNAE: **{integridade['registros_cnae']:,}**")
+        st.write(f"Classificações sem regra: **{integridade['classificacoes_sem_regra']}**")
+        st.write(f"INDOP sem auxiliar: **{integridade['indops_sem_tabela_auxiliar']}**")
+        if integridade["itens_lc_sem_correspondencia"]:
+            st.warning("Existem itens LC 116 não conciliados.")
+        else:
+            st.success("Itens LC 116 conciliados.")
 
-st.title("⚖️ Auditoria e Consulta Fiscal")
-st.markdown("Análise de NBS, CNAE e Impacto da Reforma Tributária (LC 214)")
+    with st.expander("Fontes e responsabilidade"):
+        st.caption(motor.AVISO_CLASSIFICACAO)
+        st.link_button("Texto compilado da LC 214", motor.FONTE_LC_214, width="stretch")
+        st.link_button("Painel oficial da NBS", motor.FONTE_NBS, width="stretch")
 
-# --- HEADER DA EMPRESA (LAYOUT NOVO) ---
-if st.session_state['empresa_selecionada']:
-    emp = st.session_state['empresa_selecionada']
-    nome = emp.get('razao_social') or emp.get('nome') or "Empresa Desconhecida"
-    doc = emp.get('cnpj') or "CNPJ Não informado"
-    
-    # HTML Personalizado para o Header
-    st.markdown(f"""
-    <div class="empresa-header">
-        <div>
-            <p style="opacity: 0.8; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Cliente em Análise</p>
-            <h3>{nome}</h3>
-            <p>🆔 {doc}</p>
-        </div>
-        <div style="text-align: right;">
-            <span style="background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 5px;">Status: Ativo</span>
-        </div>
+
+st.markdown(
+    """
+    <div class="app-header">
+      <h1>Auditoria de serviços e NBS</h1>
+      <p>Fluxo assistido para consultar a empresa, revisar candidatos, simular cenários e emitir relatórios.</p>
     </div>
-    """, unsafe_allow_html=True)
-    
-    # Botão discreto para remover empresa
-    col_close = st.columns([6, 1])[1]
-    if col_close.button("Fechar Empresa", type="secondary", key="close_company"):
-        st.session_state['empresa_selecionada'] = None
-        st.session_state['filtro_servicos_cnpj'] = None
-        st.rerun()
+    """,
+    unsafe_allow_html=True,
+)
 
-# --- ABAS DE NAVEGAÇÃO ---
-tab_auditoria, tab_cnae_manual, tab_cnpj = st.tabs([
-    "📊 Auditoria & Simulador", 
-    "📋 Consulta Manual",
-    "🏢 Buscar CNPJ"
-])
+etapa = st.segmented_control(
+    "Fluxo da análise",
+    ETAPAS,
+    key="etapa_atual",
+    width="stretch",
+    label_visibility="collapsed",
+)
 
-# ==========================================================
-# ABA 1: AUDITORIA VERTICAL (DASHBOARD)
-# ==========================================================
-with tab_auditoria:
-    
-    df_view = df.copy()
-    
-    # Lógica de Filtros
-    if st.session_state['filtro_servicos_cnpj'] is not None:
-        lista_servicos_cnpj = st.session_state['filtro_servicos_cnpj']
-        lista_servicos_clean = [str(s).strip() for s in lista_servicos_cnpj]
-        mask_cnpj = df_view['Item LC 116'].astype(str).str.strip().isin(lista_servicos_clean)
-        df_view = df_view[mask_cnpj]
-
-    if termo:
-        mask = (
-            df_view['Item LC 116'].astype(str).str.contains(termo, na=False) |
-            df_view['NBS'].astype(str).str.lower().str.contains(termo, na=False) |
-            df_view['DESCRIÇÃO NBS'].astype(str).str.lower().str.contains(termo, na=False) |
-            df_view['Descrição Item'].astype(str).str.lower().str.contains(termo, na=False)
-        )
-        df_view = df_view[mask]
-    if filtro_trib:
-        df_view = df_view[df_view['nome cClassTrib'].isin(filtro_trib)]
-
-    # Métrica de Resultados
-    st.caption(f"Encontrados: {len(df_view)} serviços correspondentes.")
-    
-    # Tabela Principal
-    event = st.dataframe(
-        df_view, 
-        use_container_width=True, 
-        hide_index=True, 
-        selection_mode="single-row", 
-        on_select="rerun", 
-        height=450,
-        column_config={
-            "Item LC 116": st.column_config.TextColumn("LC", width="small"),
-            "NBS": st.column_config.TextColumn("NBS", width="small"),
-            "DESCRIÇÃO NBS": st.column_config.TextColumn("Descrição Detalhada", width="large"),
-            "cClassTrib": st.column_config.TextColumn("CST", width="small"),
-            "PS ONEROSA? (S/N)": None, "ADQ EXTERIOR? (S/N)": None, "INDOP": None, "nome cClassTrib": None
-        }
+if st.session_state.empresa_selecionada:
+    empresa_topo = st.session_state.empresa_selecionada
+    st.markdown(
+        f"""
+        <div class="company-strip">
+          <strong>{motor.escapar_html(nome_empresa(empresa_topo))}</strong><br>
+          CNPJ {motor.escapar_html(motor.formatar_cnpj(empresa_topo.get('cnpj')))} ·
+          Fonte: {motor.escapar_html(empresa_topo.get('fonte_dados') or 'não informada')}
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    # Painel de Detalhes (On Click)
-    if len(event.selection.rows) > 0:
-        idx = event.selection.rows[0]
-        row = df_view.iloc[idx]
-        
-        cod_trib_raw = int(row['cClassTrib']) if pd.notnull(row['cClassTrib']) else 0
-        cst_formatado = f"{cod_trib_raw:06d}"
-        
-        regra_detalhe = pd.Series()
-        if not df_regras.empty and 'CHAVE' in df_regras.columns:
-            res = df_regras[df_regras['CHAVE'] == cst_formatado]
-            if not res.empty: regra_detalhe = res.iloc[0]
 
-        # ÁREA DE ANÁLISE ESTILIZADA
-        st.markdown("<div class='analise-container'>", unsafe_allow_html=True)
-        
-        # Título do Card
-        c_tit, c_bdg = st.columns([3, 1])
-        with c_tit:
-            st.markdown(f"### 🔎 NBS {row['NBS']} - LC {row['Item LC 116']}")
-            st.markdown(f"*{row['DESCRIÇÃO NBS']}*")
-        
-        st.markdown("---")
-        
-        col_detalhes, col_calc = st.columns([1, 1.2], gap="large")
-        
-        # Coluna Esquerda: Dados Fiscais
-        with col_detalhes:
-            st.subheader("📜 Regras Tributárias")
-            
-            red_ibs = float(regra_detalhe.get('Percentual Redução IBS', 0)) if not regra_detalhe.empty else 0
-            
-            # Badge Dinâmico
-            if red_ibs > 0:
-                st.markdown(f'<span class="badge-verde">✅ COM BENEFÍCIO FISCAL</span>', unsafe_allow_html=True)
-            else:
-                st.markdown('<span class="badge-cinza">ℹ️ TRIBUTAÇÃO PADRÃO</span>', unsafe_allow_html=True)
-            
-            st.write("")
-            
-            # Cards de Informação
-            st.info(f"**Regra (CST):** {cst_formatado}\n\n{row.get('nome cClassTrib', '-')}")
-            
-            c_red1, c_red2 = st.columns(2)
-            c_red1.metric("Redução IBS", f"{red_ibs}%")
-            c_red2.metric("Redução CBS", f"{regra_detalhe.get('Percentual Redução CBS', 0)}%")
-            
-            if not df_indop.empty:
-                res_ind = df_indop[df_indop['CODIGO'] == str(row['INDOP'])]
-                local_op = res_ind.iloc[0].get('LOCAL_OPERACAO', '-') if not res_ind.empty else "-"
-                st.write(f"📍 **Local Incidência:** {local_op}")
+if etapa == ETAPAS[0]:
+    st.subheader("Empresa e atividades econômicas")
+    st.caption("Comece pelo CNPJ para carregar os dados cadastrais e os CNAEs da empresa.")
 
-        # Coluna Direita: Calculadora
-        with col_calc:
-            st.subheader("🧮 Simulador de Impacto")
-            
+    if not st.session_state.empresa_selecionada:
+        formulario, orientacao = st.columns([1.15, 1], gap="large")
+        with formulario:
             with st.container(border=True):
-                val_base = st.number_input("Valor do Serviço (R$)", value=10000.0, step=500.0)
-                
-                t1, t2, t3 = st.tabs(["Carga Atual", "Reforma", "Resultado"])
-                
-                with t1:
-                    c1, c2, c3 = st.columns(3)
-                    aliq_iss = c1.number_input("ISS (%)", value=5.0)
-                    aliq_pis = c2.number_input("PIS (%)", value=0.65)
-                    aliq_cof = c3.number_input("COFINS (%)", value=3.0)
-                
-                with t2:
-                    c1, c2 = st.columns(2)
-                    aliq_ibs_r = c1.number_input("Ref. IBS (%)", value=17.7)
-                    aliq_cbs_r = c2.number_input("Ref. CBS (%)", value=8.8)
-                
-                with t3:
-                    if st.button("Calcular Agora", type="primary", use_container_width=True):
-                        res = motor.calcular_comparativo(
-                            val_base, aliq_iss, aliq_pis, aliq_cof, 
-                            aliq_ibs_r, aliq_cbs_r, 
-                            row['cClassTrib'], df_regras
-                        )
-                        
-                        rA, rB = st.columns(2)
-                        rA.metric("Carga Atual", f"R$ {res['valor_atual']:,.2f}", delta=f"{res['aliq_total_atual']:.2f}% (Aliq)")
-                        rB.metric("Reforma", f"R$ {res['valor_novo']:,.2f}", delta=f"{res['aliq_total_nova']:.2f}% (Aliq)", delta_color="off")
-                        
-                        dif = res['diferenca']
-                        if dif > 0:
-                            st.error(f"⚠️ Aumento de Carga: R$ {dif:,.2f}")
+                st.markdown("#### Consultar CNPJ")
+                with st.form("consulta_cnpj"):
+                    cnpj_digitado = st.text_input(
+                        "CNPJ",
+                        max_chars=18,
+                        placeholder="00.000.000/0000-00",
+                    )
+                    consentimento = st.checkbox(
+                        "Estou ciente de que o CNPJ será enviado a uma base pública de consulta."
+                    )
+                    buscar = st.form_submit_button(
+                        "Consultar empresa",
+                        type="primary",
+                        width="stretch",
+                    )
+
+                if buscar:
+                    if not consentimento:
+                        st.warning("Confirme a ciência sobre a consulta externa para continuar.")
+                    elif not motor.validar_cnpj(cnpj_digitado):
+                        st.error("CNPJ inválido. Confira os dígitos informados.")
+                    else:
+                        with st.spinner("Consultando a empresa e conciliando os CNAEs..."):
+                            dados_empresa = motor.consultar_cnpj_api(cnpj_digitado)
+                        if "erro" in dados_empresa:
+                            st.error(dados_empresa["erro"])
                         else:
-                            st.success(f"📉 Economia Estimada: R$ {abs(dif):,.2f}")
-                        
-                        # PDF
-                        st.markdown("---")
-                        pdf_bytes = motor.gerar_relatorio_pdf(st.session_state['empresa_selecionada'], res, row)
-                        st.download_button("📄 Baixar Relatório PDF", pdf_bytes, "simulacao.pdf", "application/pdf", use_container_width=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-# ==========================================================
-# ABA 2: CONSULTA MANUAL
-# ==========================================================
-with tab_cnae_manual:
-    st.markdown("### 📋 Consulta Rápida: CNAE x Serviços")
-    st.caption("Pesquise por código CNAE ou descrição da atividade para encontrar os vínculos com a LC 116.")
-    
-    col_search, col_res = st.columns([1, 2])
-    
-    if not df_cnae.empty:
-        with col_search:
-            termo_cnae = st.text_input("Digite o CNAE ou Nome:", placeholder="Ex: 6920...")
-        
-        if termo_cnae:
-            resultado = motor.buscar_cnae(df_cnae, termo_cnae)
-            if len(resultado) > 0:
-                st.dataframe(
-                    resultado, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={
-                        "cnae": "CNAE", "descricao_cnae": "Descrição Atividade",
-                        "item_lista_servico": "Cód. Serviço", "descricao_item": "Descrição Serviço LC",
-                        "cnae_numeros_raw": None, "cnae_numeros": None
-                    }
-                )
-            else:
-                st.warning("Nenhum CNAE correspondente encontrado.")
+                            codigos = motor.extrair_cnaes_empresa(dados_empresa)
+                            combinacoes = motor.gerar_combinacoes_cnae_nbs(
+                                codigos, df_cnae, df, df_indop
+                            )
+                            limpar_empresa()
+                            st.session_state.empresa_selecionada = dados_empresa
+                            st.session_state.relatorio_cnpj = combinacoes
+                            st.session_state.origem_classificacao = "CNPJ consultado"
+                            st.session_state.etapa_pendente = ETAPAS[1]
+                            st.rerun()
+        with orientacao:
+            st.markdown("#### O que acontecerá")
+            st.write("1. Conferência dos dados cadastrais.")
+            st.write("2. Identificação dos CNAEs principal e secundários.")
+            st.write("3. Cruzamento com LC 116, NBS, cClassTrib e INDOP.")
+            st.write("4. Seleção de um candidato para simulação e relatório.")
+            st.info("Sem CNPJ? Utilize a consulta manual na etapa Classificação.")
+            if st.button("Ir para consulta manual", width="stretch"):
+                st.session_state.origem_classificacao = "Consulta manual"
+                ir_para(ETAPAS[1])
     else:
-        st.error("Erro: Arquivo de CNAEs não carregado.")
+        empresa = st.session_state.empresa_selecionada
+        codigos = motor.extrair_cnaes_empresa(empresa)
+        combinacoes = st.session_state.relatorio_cnpj
+        combinacoes = combinacoes if isinstance(combinacoes, pd.DataFrame) else pd.DataFrame()
+        ficha = motor.preparar_dados_empresa(empresa)
 
-# ==========================================================
-# ABA 3: CONSULTA POR CNPJ
-# ==========================================================
-with tab_cnpj:
-    st.markdown("### 🏢 Consulta Inteligente por CNPJ")
-    st.caption("Busque os dados na Receita Federal e cruze automaticamente com a lista de serviços.")
+        metricas = st.columns(4)
+        metricas[0].metric("CNAEs", len(codigos))
+        metricas[1].metric("Itens LC 116", combinacoes["Item LC 116"].nunique() if not combinacoes.empty else 0)
+        metricas[2].metric("NBS candidatas", combinacoes["NBS"].replace("Não localizada", pd.NA).nunique() if not combinacoes.empty else 0)
+        metricas[3].metric("Opções INDOP", combinacoes["INDOP"].replace("", pd.NA).nunique() if not combinacoes.empty else 0)
 
-    with st.container(border=True):
-        c_input, c_btn = st.columns([4, 1])
-        with c_input:
-            cnpj_digitado = st.text_input("CNPJ (apenas números):", max_chars=18, placeholder="00.000.000/0000-00", label_visibility="collapsed")
-        with c_btn:
-            buscar_cnpj = st.button("🔍 Consultar", type="primary", use_container_width=True)
+        identificacao, atividades = st.columns([1, 1.2], gap="large")
+        with identificacao:
+            st.markdown("#### Dados cadastrais")
+            st.dataframe(
+                ficha,
+                width="stretch",
+                hide_index=True,
+                height=410,
+                column_config={
+                    "Seção": st.column_config.TextColumn(width="medium"),
+                    "Campo": st.column_config.TextColumn(width="medium"),
+                    "Informação": st.column_config.TextColumn(width="large"),
+                },
+            )
+        with atividades:
+            st.markdown("#### Atividades identificadas")
+            atividades_df = (
+                df_cnae[df_cnae["cnae_numeros"].isin(codigos)][
+                    ["cnae", "descricao_cnae"]
+                ]
+                .drop_duplicates()
+                .rename(columns={"cnae": "CNAE", "descricao_cnae": "Descrição"})
+            )
+            if atividades_df.empty:
+                st.warning("Os CNAEs informados pela fonte não constam na base local.")
+            else:
+                st.dataframe(atividades_df, width="stretch", hide_index=True, height=410)
 
-    if buscar_cnpj and cnpj_digitado:
-        with st.spinner("Conectando às bases públicas..."):
-            dados_empresa = motor.consultar_cnpj_api(cnpj_digitado)
-        
-        if "erro" in dados_empresa:
-            st.error(f"❌ {dados_empresa['erro']}")
-        else:
-            st.success("✅ Empresa localizada com sucesso!")
-            st.session_state['empresa_selecionada'] = dados_empresa
-            
-            # LÓGICA DE FILTRO AUTOMÁTICO (Mantida igual para garantir integridade)
-            lista_codigos_numericos = []
-            cnae_p = None
-            if 'cnae_fiscal' in dados_empresa: cnae_p = dados_empresa['cnae_fiscal']
-            elif 'cnae_fiscal_principal' in dados_empresa:
-                obj = dados_empresa['cnae_fiscal_principal']
-                if isinstance(obj, dict): cnae_p = obj.get('codigo')
-            elif 'atividade_principal' in dados_empresa:
-                l = dados_empresa['atividade_principal']
-                if isinstance(l, list) and len(l)>0: cnae_p = l[0].get('code')
-            
-            if cnae_p: lista_codigos_numericos.append(re.sub(r'\D', '', str(cnae_p)))
-
-            cnaes_sec = dados_empresa.get('cnaes_secundarios') or dados_empresa.get('atividades_secundarias') or []
-            if isinstance(cnaes_sec, list):
-                for i in cnaes_sec:
-                    if isinstance(i, dict):
-                        c = i.get('codigo') or i.get('cnae_fiscal') or i.get('code')
-                        if c: lista_codigos_numericos.append(re.sub(r'\D', '', str(c)))
-            
-            if lista_codigos_numericos and not df_cnae.empty and 'cnae_numeros' in df_cnae.columns:
-                resultado_cruzamento = df_cnae[df_cnae['cnae_numeros'].isin(lista_codigos_numericos)]
-                if not resultado_cruzamento.empty:
-                    lista_servicos = resultado_cruzamento['item_lista_servico'].unique()
-                    st.session_state['filtro_servicos_cnpj'] = lista_servicos
-            
+        acao_1, acao_2 = st.columns([2, 1])
+        if acao_1.button("Continuar para classificação", type="primary", width="stretch"):
+            st.session_state.origem_classificacao = "CNPJ consultado"
+            ir_para(ETAPAS[1])
+        if acao_2.button("Consultar outro CNPJ", width="stretch"):
+            limpar_empresa()
             st.rerun()
 
-# EXIBIÇÃO DE DETALHES (ABA 3) - SÓ APARECE SE TIVER EMPRESA
-if st.session_state['empresa_selecionada']:
-    with tab_cnpj:
-        dados_empresa = st.session_state['empresa_selecionada']
-        
-        # Reaproveita lógica de lista para visualização
-        lista_codigos_numericos = []
-        cnae_p = None
-        if 'cnae_fiscal' in dados_empresa: cnae_p = dados_empresa['cnae_fiscal']
-        elif 'cnae_fiscal_principal' in dados_empresa:
-             obj = dados_empresa['cnae_fiscal_principal']
-             if isinstance(obj, dict): cnae_p = obj.get('codigo')
-        elif 'atividade_principal' in dados_empresa:
-             l = dados_empresa['atividade_principal']
-             if isinstance(l, list) and len(l)>0: cnae_p = l[0].get('code')
-        if cnae_p: lista_codigos_numericos.append(re.sub(r'\D', '', str(cnae_p)))
 
-        cnaes_sec = dados_empresa.get('cnaes_secundarios') or dados_empresa.get('atividades_secundarias') or []
-        if isinstance(cnaes_sec, list):
-            for i in cnaes_sec:
-                if isinstance(i, dict):
-                    c = i.get('codigo') or i.get('cnae_fiscal') or i.get('code')
-                    if c: lista_codigos_numericos.append(re.sub(r'\D', '', str(c)))
-        
-        st.markdown("### 🛠️ Cruzamento: CNAE x Serviços")
-        
-        if lista_codigos_numericos:
-            if not df_cnae.empty and 'cnae_numeros' in df_cnae.columns:
-                resultado = df_cnae[df_cnae['cnae_numeros'].isin(lista_codigos_numericos)]
-                
-                if not resultado.empty:
-                    st.dataframe(resultado, use_container_width=True, hide_index=True, column_config={"cnae": "CNAE", "descricao_cnae": "Atividade", "item_lista_servico": "LC 116", "descricao_item": "Serviço", "cnae_numeros_raw": None, "cnae_numeros": None})
-                    
-                    st.success(f"Foram identificados {len(resultado)} vínculos de serviços possíveis.")
-                    
-                    # PREPARAÇÃO PARA EXPORTAÇÃO
-                    srvs = resultado['item_lista_servico'].unique()
-                    df_rel = pd.DataFrame()
-                    if df is not None:
-                        srvs_clean = [str(s).strip() for s in srvs]
-                        mask = df['Item LC 116'].astype(str).str.strip().isin(srvs_clean)
-                        df_rel = df[mask].copy()
-                        if not df_rel.empty:
-                            if not df_indop.empty:
-                                df_rel['INDOP'] = df_rel['INDOP'].astype(str)
-                                df_indop['CODIGO'] = df_indop['CODIGO'].astype(str)
-                                df_rel = df_rel.merge(df_indop[['CODIGO', 'LOCAL_OPERACAO']], left_on='INDOP', right_on='CODIGO', how='left')
-                            else:
-                                df_rel['LOCAL_OPERACAO'] = "-"
+elif etapa == ETAPAS[1]:
+    st.subheader("Classificação e candidatos NBS")
+    st.caption("Analise uma visão resumida e abra os INDOPs somente quando precisar dos detalhes.")
 
-                            # BOTÕES DE EXPORTAÇÃO
-                            st.markdown("### 📥 Exportar Relatórios")
-                            c1, c2 = st.columns(2)
-                            with c1:
-                                excel_data = motor.gerar_excel_completo(dados_empresa, df_rel)
-                                st.download_button("📊 Excel Completo (.xlsx)", excel_data, f"analise_{dados_empresa.get('cnpj')}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-                            with c2:
-                                pdf_data = motor.gerar_pdf_paisagem(dados_empresa, df_rel)
-                                st.download_button("📄 Relatório Oficial (.pdf)", pdf_data, f"relatorio_{dados_empresa.get('cnpj')}.pdf", "application/pdf", use_container_width=True)
-                else:
-                    st.warning("⚠️ Os CNAEs desta empresa não possuem vínculo direto com a Lista de Serviços (LC 116).")
+    origens = ["Consulta manual"]
+    if st.session_state.empresa_selecionada:
+        origens.insert(0, "CNPJ consultado")
+    if st.session_state.origem_classificacao not in origens:
+        st.session_state.origem_classificacao = origens[0]
+    origem = st.segmented_control(
+        "Origem da análise",
+        origens,
+        key="origem_classificacao",
+        width="stretch",
+    )
+
+    combinacoes_ativas = pd.DataFrame()
+    if origem == "CNPJ consultado":
+        relatorio = st.session_state.relatorio_cnpj
+        combinacoes_ativas = relatorio if isinstance(relatorio, pd.DataFrame) else pd.DataFrame()
+        if combinacoes_ativas.empty:
+            st.markdown('<div class="empty-state"><strong>Nenhuma combinação encontrada.</strong><br>Revise os CNAEs ou utilize a consulta manual.</div>', unsafe_allow_html=True)
+    else:
+        with st.container(border=True):
+            st.markdown("#### Consulta manual de CNAE")
+            termo_manual = st.text_input(
+                "Código, atividade ou item LC 116",
+                placeholder="Ex.: 6201-5/01 ou desenvolvimento",
+                key="termo_manual",
+            )
+            resultado_manual = motor.buscar_cnae(df_cnae, termo_manual) if termo_manual else pd.DataFrame()
+            if termo_manual and resultado_manual.empty:
+                st.warning("Nenhum CNAE correspondente foi localizado.")
+            elif not resultado_manual.empty:
+                st.dataframe(
+                    resultado_manual[
+                        ["cnae", "descricao_cnae", "item_lista_servico"]
+                    ].rename(
+                        columns={
+                            "cnae": "CNAE",
+                            "descricao_cnae": "Atividade",
+                            "item_lista_servico": "Item LC 116",
+                        }
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                    height=260,
+                )
+                opcoes = sorted(resultado_manual["cnae_numeros"].unique())
+                selecionados = st.multiselect(
+                    "CNAEs para analisar",
+                    opcoes,
+                    default=opcoes[: min(10, len(opcoes))],
+                    format_func=motor.formatar_cnae,
+                )
+                if st.button("Analisar CNAEs selecionados", type="primary", width="stretch"):
+                    st.session_state.relatorio_manual = motor.gerar_combinacoes_cnae_nbs(
+                        selecionados, df_cnae, df, df_indop
+                    )
+                    st.session_state.grupo_selecionado = None
+                    st.session_state.arquivos_relatorio = None
+                    st.rerun()
+        relatorio = st.session_state.relatorio_manual
+        combinacoes_ativas = relatorio if isinstance(relatorio, pd.DataFrame) else pd.DataFrame()
+
+    if not combinacoes_ativas.empty:
+        st.markdown("#### Resultados")
+        filtro_1, filtro_2, filtro_3 = st.columns([1.3, 1, .75])
+        termo_resultado = filtro_1.text_input(
+            "Filtrar resultados",
+            placeholder="CNAE, NBS, descrição ou INDOP",
+            key=f"filtro_{origem}",
+        )
+        regras_opcoes = sorted(
+            combinacoes_ativas["Classificação Tributária"].dropna().astype(str).unique()
+        )
+        regras_filtro = filtro_2.multiselect(
+            "Classificação tributária",
+            regras_opcoes,
+            key=f"regras_{origem}",
+        )
+        visao = filtro_3.radio(
+            "Visualização",
+            ["Resumida", "Detalhada"],
+            horizontal=True,
+            key=f"visao_{origem}",
+        )
+        filtradas = motor.filtrar_combinacoes(
+            combinacoes_ativas, termo_resultado, regras_filtro
+        )
+        resumo = motor.resumir_combinacoes(filtradas)
+
+        indicadores = st.columns(4)
+        indicadores[0].metric("Combinações", len(resumo))
+        indicadores[1].metric("CNAEs", resumo["CNAE"].nunique())
+        indicadores[2].metric("NBS", resumo["NBS"].replace("Não localizada", pd.NA).nunique())
+        indicadores[3].metric("Opções INDOP", filtradas["INDOP"].replace("", pd.NA).nunique())
+
+        if visao == "Resumida":
+            tabela = resumo[
+                [
+                    "CNAE",
+                    "Item LC 116",
+                    "NBS",
+                    "Descrição NBS",
+                    "cClassTrib",
+                    "Quantidade INDOP",
+                    "Opções INDOP",
+                    "Status do vínculo",
+                ]
+            ]
         else:
-            st.error("Não foi possível ler os CNAEs da empresa.")
+            tabela = filtradas[
+                [
+                    "CNAE",
+                    "Item LC 116",
+                    "NBS",
+                    "Descrição NBS",
+                    "cClassTrib",
+                    "INDOP",
+                    "Status do vínculo",
+                ]
+            ]
+
+        evento = st.dataframe(
+            tabela,
+            width="stretch",
+            hide_index=True,
+            height=440,
+            selection_mode="single-row",
+            on_select="rerun",
+            column_config={
+                "Descrição NBS": st.column_config.TextColumn(width="large"),
+                "Quantidade INDOP": st.column_config.NumberColumn("Opções", width="small"),
+                "Status do vínculo": st.column_config.TextColumn("Status", width="medium"),
+            },
+        )
+
+        if evento.selection.rows:
+            linha_selecionada = (
+                resumo.iloc[evento.selection.rows[0]]
+                if visao == "Resumida"
+                else filtradas.iloc[evento.selection.rows[0]]
+            )
+            chaves = ["CNAE", "Item LC 116", "NBS", "cClassTrib"]
+            mascara = pd.Series(True, index=filtradas.index)
+            for chave in chaves:
+                mascara &= filtradas[chave].astype(str).eq(str(linha_selecionada[chave]))
+            grupo = filtradas[mascara].copy()
+            st.session_state.grupo_selecionado = grupo
+
+        grupo = st.session_state.grupo_selecionado
+        if isinstance(grupo, pd.DataFrame) and not grupo.empty:
+            primeiro = grupo.iloc[0]
+            st.markdown("#### Detalhes do candidato selecionado")
+            detalhe_1, detalhe_2 = st.columns([1.25, 1], gap="large")
+            with detalhe_1:
+                with st.container(border=True):
+                    st.write(f"**NBS:** {primeiro['NBS']}")
+                    st.write(f"**Descrição:** {primeiro['Descrição NBS']}")
+                    st.write(f"**Item LC 116:** {primeiro['Item LC 116']}")
+                    st.write(f"**cClassTrib:** {primeiro['cClassTrib']}")
+                    st.write(f"**Regra:** {primeiro['Classificação Tributária']}")
+            with detalhe_2:
+                st.dataframe(
+                    grupo[["INDOP", "Detalhamento INDOP"]].drop_duplicates(),
+                    width="stretch",
+                    hide_index=True,
+                    height=230,
+                    column_config={"Detalhamento INDOP": st.column_config.TextColumn(width="large")},
+                )
+            if st.button("Usar esta NBS no simulador", type="primary", width="stretch"):
+                novo_servico = servico_a_partir_combinacao(primeiro)
+                if st.session_state.servico_selecionado != novo_servico:
+                    st.session_state.ultima_simulacao = None
+                    st.session_state.servico_simulado = None
+                st.session_state.servico_selecionado = novo_servico
+                ir_para(ETAPAS[2])
+        else:
+            st.info("Selecione uma linha da tabela para abrir os detalhes e continuar.")
+    elif origem == "Consulta manual":
+        st.markdown('<div class="empty-state"><strong>Inicie uma consulta manual.</strong><br>Pesquise um CNAE acima e selecione as atividades que deseja analisar.</div>', unsafe_allow_html=True)
+
+
+elif etapa == ETAPAS[2]:
+    st.subheader("Simulação tributária")
+    servico = st.session_state.servico_selecionado
+    if not servico:
+        st.markdown('<div class="empty-state"><strong>Nenhuma NBS foi selecionada.</strong><br>Escolha um candidato na etapa Classificação antes de simular.</div>', unsafe_allow_html=True)
+        if st.button("Ir para classificação", type="primary"):
+            ir_para(ETAPAS[1])
+    else:
+        with st.container(border=True):
+            st.write(f"**NBS {servico['NBS']} · Item LC 116 {servico['Item LC 116']}**")
+            st.write(servico["DESCRIÇÃO NBS"])
+            st.caption(f"cClassTrib {servico['cClassTrib']} · {servico.get('nome cClassTrib', '')}")
+
+        formulario, resultado_area = st.columns([1, 1.15], gap="large")
+        with formulario:
+            st.markdown("#### Parâmetros")
+            cenario = st.selectbox(
+                "Cenário de alíquotas",
+                ["2026 — ano de teste", "2033 — referência estimada", "Personalizado"],
+            )
+            if cenario.startswith("2026"):
+                ano_padrao, ibs_padrao, cbs_padrao = 2026, 0.1, 0.9
+            elif cenario.startswith("2033"):
+                ano_padrao, ibs_padrao, cbs_padrao = 2033, 17.7, 8.8
+            else:
+                ano_padrao, ibs_padrao, cbs_padrao = 2026, 0.1, 0.9
+
+            with st.form("form_simulacao"):
+                valor = st.number_input("Valor do serviço (R$)", min_value=0.0, value=10000.0, step=500.0)
+                regime = st.selectbox(
+                    "Regime/contexto",
+                    ["Não informado", "Lucro presumido", "Lucro real", "Simples Nacional", "Outro"],
+                )
+                ano = st.number_input(
+                    "Ano do cenário",
+                    min_value=2026,
+                    max_value=2033,
+                    value=ano_padrao,
+                    disabled=cenario != "Personalizado",
+                )
+                atual_1, atual_2, atual_3 = st.columns(3)
+                iss = atual_1.number_input("ISS (%)", 0.0, 100.0, 5.0, 0.1)
+                pis = atual_2.number_input("PIS (%)", 0.0, 100.0, 0.65, 0.05)
+                cofins = atual_3.number_input("COFINS (%)", 0.0, 100.0, 3.0, 0.1)
+                novo_1, novo_2 = st.columns(2)
+                ibs = novo_1.number_input(
+                    "IBS de referência (%)",
+                    0.0,
+                    100.0,
+                    ibs_padrao,
+                    0.1,
+                    disabled=cenario != "Personalizado",
+                )
+                cbs = novo_2.number_input(
+                    "CBS de referência (%)",
+                    0.0,
+                    100.0,
+                    cbs_padrao,
+                    0.1,
+                    disabled=cenario != "Personalizado",
+                )
+                cred_1, cred_2 = st.columns(2)
+                credito_atual = cred_1.number_input("Créditos atuais (%)", 0.0, 100.0, 0.0, 1.0)
+                credito_novo = cred_2.number_input("Créditos IBS/CBS (%)", 0.0, 100.0, 0.0, 1.0)
+                calcular = st.form_submit_button("Calcular cenário", type="primary", width="stretch")
+
+            if calcular:
+                try:
+                    st.session_state.ultima_simulacao = motor.calcular_comparativo(
+                        valor,
+                        iss,
+                        pis,
+                        cofins,
+                        ibs,
+                        cbs,
+                        servico["cClassTrib"],
+                        df_regras,
+                        ano=int(ano),
+                        regime=regime,
+                        credito_atual=credito_atual,
+                        credito_novo=credito_novo,
+                    )
+                    st.session_state.servico_simulado = servico
+                    st.session_state.arquivos_relatorio = None
+                except motor.ValidacaoFiscalError as erro:
+                    st.error(str(erro))
+
+        with resultado_area:
+            st.markdown("#### Resultado")
+            resultado = st.session_state.ultima_simulacao
+            if not resultado or st.session_state.servico_simulado != servico:
+                st.markdown('<div class="empty-state"><strong>Informe os parâmetros e calcule o cenário.</strong><br>O comparativo aparecerá nesta área.</div>', unsafe_allow_html=True)
+            else:
+                metrica_1, metrica_2, metrica_3 = st.columns(3)
+                metrica_1.metric("Sistema atual", moeda_br(resultado["valor_atual"]), f"{resultado['aliq_total_atual']:.2f}%")
+                metrica_2.metric("IBS/CBS", moeda_br(resultado["valor_novo"]), f"{resultado['aliq_total_nova']:.2f}%")
+                metrica_3.metric("Diferença", moeda_br(resultado["diferenca"]))
+
+                grafico = pd.DataFrame(
+                    {
+                        "Cenário": ["Sistema atual", "IBS/CBS"],
+                        "Valor líquido": [resultado["valor_atual"], resultado["valor_novo"]],
+                    }
+                ).set_index("Cenário")
+                st.bar_chart(grafico, color="#174a78")
+                detalhamento = pd.DataFrame(
+                    [
+                        ["Sistema atual", resultado["aliq_total_atual"], resultado["valor_credito_atual"], resultado["valor_atual"]],
+                        ["IBS/CBS", resultado["aliq_total_nova"], resultado["valor_credito_novo"], resultado["valor_novo"]],
+                    ],
+                    columns=["Cenário", "Alíquota (%)", "Créditos (R$)", "Valor líquido (R$)"],
+                )
+                st.dataframe(detalhamento, width="stretch", hide_index=True)
+                st.warning(resultado["observacao"], icon="⚠️")
+                pdf_simulacao = motor.gerar_relatorio_pdf(
+                    st.session_state.empresa_selecionada,
+                    resultado,
+                    servico,
+                )
+                st.download_button(
+                    "Baixar esta simulação em PDF",
+                    pdf_simulacao,
+                    "simulacao_tributaria.pdf",
+                    "application/pdf",
+                    width="stretch",
+                )
+                if st.button("Continuar para relatórios", type="primary", width="stretch"):
+                    ir_para(ETAPAS[3])
+
+
+elif etapa == ETAPAS[3]:
+    st.subheader("Central de relatórios")
+    st.caption("Escolha o conteúdo, confira a prévia e prepare os arquivos somente quando precisar.")
+
+    fontes_relatorio: dict[str, pd.DataFrame] = {}
+    if isinstance(st.session_state.relatorio_cnpj, pd.DataFrame) and not st.session_state.relatorio_cnpj.empty:
+        fontes_relatorio["Empresa consultada"] = st.session_state.relatorio_cnpj
+    if isinstance(st.session_state.relatorio_manual, pd.DataFrame) and not st.session_state.relatorio_manual.empty:
+        fontes_relatorio["Consulta manual"] = st.session_state.relatorio_manual
+
+    if not fontes_relatorio:
+        st.markdown('<div class="empty-state"><strong>Não há resultados para exportar.</strong><br>Realize uma classificação por CNPJ ou consulta manual.</div>', unsafe_allow_html=True)
+        if st.button("Ir para classificação", type="primary"):
+            ir_para(ETAPAS[1])
+    else:
+        configuracao, previa = st.columns([.85, 1.35], gap="large")
+        with configuracao:
+            with st.container(border=True):
+                st.markdown("#### Configuração")
+                fonte_nome = st.selectbox("Origem dos dados", list(fontes_relatorio))
+                modo = st.segmented_control(
+                    "Nível de detalhe",
+                    ["Resumido", "Completo"],
+                    default="Resumido",
+                    width="stretch",
+                )
+                base_relatorio = fontes_relatorio[fonte_nome]
+                cnaes_disponiveis = sorted(base_relatorio["CNAE"].dropna().unique())
+                cnaes_relatorio = st.multiselect(
+                    "CNAEs incluídos",
+                    cnaes_disponiveis,
+                    default=cnaes_disponiveis,
+                )
+                incluir_empresa = st.checkbox(
+                    "Incluir ficha cadastral da empresa",
+                    value=fonte_nome == "Empresa consultada",
+                    disabled=fonte_nome != "Empresa consultada",
+                )
+                if not cnaes_relatorio:
+                    st.warning("Selecione pelo menos um CNAE.")
+
+        base_filtrada = base_relatorio[base_relatorio["CNAE"].isin(cnaes_relatorio)].copy()
+        dados_exportacao = (
+            motor.resumir_combinacoes(base_filtrada) if modo == "Resumido" else base_filtrada
+        )
+        with previa:
+            st.markdown("#### Prévia")
+            resumo_cols = st.columns(3)
+            resumo_cols[0].metric("Linhas", len(dados_exportacao))
+            resumo_cols[1].metric("CNAEs", dados_exportacao["CNAE"].nunique() if not dados_exportacao.empty else 0)
+            resumo_cols[2].metric("NBS", dados_exportacao["NBS"].replace("Não localizada", pd.NA).nunique() if not dados_exportacao.empty else 0)
+            st.dataframe(dados_exportacao.head(200), width="stretch", hide_index=True, height=390)
+            if len(dados_exportacao) > 200:
+                st.caption("A prévia mostra 200 linhas; o arquivo conterá todas as linhas selecionadas.")
+
+        assinatura = (
+            fonte_nome,
+            modo,
+            tuple(cnaes_relatorio),
+            incluir_empresa,
+            len(dados_exportacao),
+        )
+        preparar = st.button(
+            "Preparar Excel e PDF",
+            type="primary",
+            width="stretch",
+            disabled=dados_exportacao.empty,
+        )
+        if preparar:
+            empresa_exportacao = (
+                st.session_state.empresa_selecionada
+                if incluir_empresa and st.session_state.empresa_selecionada
+                else {"nome": fonte_nome, "fonte_dados": "Base local"}
+            )
+            with st.spinner("Formatando os arquivos..."):
+                excel = motor.gerar_excel_completo(
+                    empresa_exportacao,
+                    dados_exportacao,
+                    incluir_dados_empresa=incluir_empresa,
+                )
+                pdf = motor.gerar_pdf_paisagem(empresa_exportacao, dados_exportacao)
+            st.session_state.arquivos_relatorio = {
+                "assinatura": assinatura,
+                "excel": excel,
+                "pdf": pdf,
+                "nome": re.sub(r"\D", "", str(empresa_exportacao.get("cnpj", ""))) or "consulta",
+            }
+
+        arquivos = st.session_state.arquivos_relatorio
+        if arquivos and arquivos.get("assinatura") == assinatura:
+            st.success("Arquivos preparados com sucesso.")
+            botao_excel, botao_pdf = st.columns(2)
+            botao_excel.download_button(
+                "Baixar Excel formatado",
+                arquivos["excel"],
+                f"candidatos_nbs_{arquivos['nome']}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                width="stretch",
+            )
+            botao_pdf.download_button(
+                "Baixar relatório PDF",
+                arquivos["pdf"],
+                f"candidatos_nbs_{arquivos['nome']}.pdf",
+                "application/pdf",
+                width="stretch",
+            )
+        elif arquivos:
+            st.info("A configuração mudou. Clique em “Preparar Excel e PDF” para atualizar os arquivos.")
+
+
+st.divider()
+st.caption(
+    "Ferramenta de apoio à análise · LC 214/2025 (texto compilado) · resultados sujeitos à legislação, notas técnicas e validação profissional vigentes."
+)
