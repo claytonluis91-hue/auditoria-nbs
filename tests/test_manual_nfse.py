@@ -13,6 +13,17 @@ class ManualNFSeTests(unittest.TestCase):
             "municipio": "Adamantina",
             "uf": "SP",
         }
+        self.enquadramento = {
+            "Item LC 116": "6.02",
+            "Descrição LC 116": "Esteticistas, tratamento de pele, depilação e congêneres.",
+            "CNAE": "9602-5/02",
+            "Descrição CNAE": "Atividades de estética e cuidados com a beleza",
+            "cClassTrib": "000001",
+            "Classificação Tributária": "Situações tributadas integralmente pelo IBS e CBS.",
+            "Anexo": "Não informado",
+            "NBS": "1.2602.20.00",
+            "Descrição NBS": "Serviços de manicure, pedicure e tratamento cosmético",
+        }
 
     def test_anexo_b_possui_codigos_unicos_e_descricoes(self):
         codigos = manual.carregar_codigos_servico()
@@ -35,11 +46,21 @@ class ManualNFSeTests(unittest.TestCase):
     def test_manual_personalizado_e_pdf_valido(self):
         pdf = manual.gerar_manual_nfse(
             self.empresa,
-            ["1.01", "1.03"],
+            ["1.01", "1.03", "6.02"],
             [{"codigo_servico": "01.01.01.000", "aliquota": 2.0}],
+            [self.enquadramento],
         )
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertGreater(len(pdf), 250_000)
+
+    def test_enquadramento_nbs_e_normalizado_e_sem_duplicidade(self):
+        resultado = manual.preparar_enquadramentos_nbs(
+            [self.enquadramento, self.enquadramento, {"NBS": "Não localizada"}]
+        )
+        self.assertEqual(len(resultado), 1)
+        self.assertEqual(resultado[0]["item_lc116"], "6.02")
+        self.assertEqual(resultado[0]["nbs"], "1.2602.20.00")
+        self.assertEqual(resultado[0]["anexo"], "Não informado")
 
     def test_nome_do_arquivo_remove_acentos(self):
         self.assertEqual(manual.nome_arquivo_manual(self.empresa), "manual_nfse_arvore_tech.pdf")
