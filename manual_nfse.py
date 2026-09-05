@@ -18,7 +18,7 @@ import backend_issqn as issqn
 PASTA_PROJETO = Path(__file__).resolve().parent
 CAMINHO_CODIGOS = PASTA_PROJETO / "codigo_servico_nacional.json"
 PASTA_IMAGENS = PASTA_PROJETO / "assets" / "manual_nfse"
-VERSAO_MANUAL = "1.0"
+VERSAO_MANUAL = "1.0.1"
 VERSAO_GUIA_OFICIAL = "1.2"
 URL_EMISSOR = "https://www.nfse.gov.br/EmissorNacional"
 URL_GUIA = (
@@ -297,6 +297,11 @@ def _tabela_classificacoes(
         color=(255, 255, 255),
         fill_color=(23, 74, 120),
     )
+    estilo_corpo = FontFace(
+        color=(31, 43, 55),
+        fill_color=(255, 255, 255),
+    )
+    pdf.set_draw_color(190, 205, 218)
     with pdf.table(
         width=180,
         col_widths=(20, 31, 27, 102),
@@ -309,7 +314,7 @@ def _tabela_classificacoes(
         for valor in ("LC 116", "Código nacional", "ISSQN", "Descrição oficial"):
             cabecalho.cell(_pdf_texto(valor))
         for registro in classificacoes:
-            linha = tabela.row()
+            linha = tabela.row(style=estilo_corpo)
             linha.cell(_pdf_texto(registro["item_lc116"]))
             linha.cell(_pdf_texto(registro["codigo"]))
             linha.cell(_pdf_texto(registro["aliquota"]))
