@@ -53,13 +53,24 @@ class ManualNFSeTests(unittest.TestCase):
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertGreater(len(pdf), 250_000)
 
-    def test_enquadramento_nbs_e_normalizado_e_sem_duplicidade(self):
+    def test_possibilidades_nbs_sao_normalizadas_e_sem_duplicidade(self):
+        outra_possibilidade = {
+            **self.enquadramento,
+            "NBS": "1.2602.30.00",
+            "Descrição NBS": "Serviços de bem-estar físico",
+        }
         resultado = manual.preparar_enquadramentos_nbs(
-            [self.enquadramento, self.enquadramento, {"NBS": "Não localizada"}]
+            [
+                self.enquadramento,
+                self.enquadramento,
+                outra_possibilidade,
+                {"NBS": "Não localizada"},
+            ]
         )
-        self.assertEqual(len(resultado), 1)
+        self.assertEqual(len(resultado), 2)
         self.assertEqual(resultado[0]["item_lc116"], "6.02")
         self.assertEqual(resultado[0]["nbs"], "1.2602.20.00")
+        self.assertEqual(resultado[1]["nbs"], "1.2602.30.00")
         self.assertEqual(resultado[0]["anexo"], "Não informado")
 
     def test_nome_do_arquivo_remove_acentos(self):

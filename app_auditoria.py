@@ -168,32 +168,28 @@ def servico_a_partir_combinacao(linha: pd.Series | dict[str, Any]) -> dict[str, 
     }
 
 
-def enquadramento_nbs_da_consulta(
+def possibilidades_nbs_da_consulta(
     combinacoes: pd.DataFrame,
     regras: pd.DataFrame,
-    selecoes: dict[str, Any],
+    itens_lc116: list[str],
 ) -> list[dict[str, str]]:
-    """Recupera a combinação atualmente escolhida no painel da empresa."""
+    """Recupera todas as combinações NBS dos serviços escolhidos para o manual."""
 
     colunas_necessarias = {"Item LC 116", "CNAE", "cClassTrib", "NBS"}
     if combinacoes.empty or not colunas_necessarias.issubset(combinacoes.columns):
         return []
-    filtradas = combinacoes.copy()
-    for coluna, chave in (
-        ("Item LC 116", "cnpj_servico_item"),
-        ("CNAE", "cnpj_servico_cnae"),
-        ("cClassTrib", "cnpj_servico_classificacao"),
-        ("NBS", "cnpj_servico_nbs"),
-    ):
-        valor = selecoes.get(chave)
-        if valor not in (None, ""):
-            filtradas = filtradas[filtradas[coluna].astype(str).eq(str(valor))]
-    if filtradas.empty:
-        return []
-    linha = filtradas.iloc[0]
-    regra = motor.obter_regra_tributaria(linha.get("cClassTrib", ""), regras)
-    return [
-        {
+    itens_normalizados = {
+        motor.normalizar_codigo_servico(item) for item in itens_lc116 if item
+    }
+    filtradas = combinacoes[
+        combinacoes["Item LC 116"].map(motor.normalizar_codigo_servico).isin(itens_normalizados)
+    ].drop_duplicates(
+        subset=["Item LC 116", "CNAE", "cClassTrib", "NBS"]
+    )
+    resultado: list[dict[str, str]] = []
+    for _, linha in filtradas.iterrows():
+        regra = motor.obter_regra_tributaria(linha.get("cClassTrib", ""), regras)
+        resultado.append({
             "item_lc116": str(linha.get("Item LC 116", "")),
             "descricao_lc116": str(linha.get("Descrição LC 116", "")),
             "cnae": str(linha.get("CNAE", "")),
@@ -205,8 +201,8 @@ def enquadramento_nbs_da_consulta(
             "anexo": str(regra["numero_anexo"]),
             "nbs": str(linha.get("NBS", "")),
             "descricao_nbs": str(linha.get("Descrição NBS", "")),
-        }
-    ]
+        })
+    return manual.preparar_enquadramentos_nbs(resultado)
 
 
 def garantir_opcao_valida(chave: str, opcoes: list[str]) -> None:
@@ -1352,28 +1348,22 @@ elif etapa == ETAPAS[5]:
                     f"O PDF incluirá **{len(classificacoes_manual)} classificação(ões) nacional(is)** "
                     "com descrição oficial e alíquota municipal quando disponível."
                 )
-                enquadramentos_manual = enquadramento_nbs_da_consulta(
+                enquadramentos_manual = possibilidades_nbs_da_consulta(
                     relatorio_empresa
                     if isinstance(relatorio_empresa, pd.DataFrame)
                     else pd.DataFrame(),
                     df_regras,
-                    st.session_state,
+                    itens_manual,
                 )
-                enquadramentos_manual = [
-                    registro
-                    for registro in enquadramentos_manual
-                    if motor.normalizar_codigo_servico(registro["item_lc116"]) in itens_manual
-                ]
                 if enquadramentos_manual:
-                    nbs_manual = enquadramentos_manual[0]
                     st.info(
-                        "O manual também apresentará o enquadramento selecionado na primeira tela: "
-                        f"**NBS {nbs_manual['nbs']} — {nbs_manual['descricao_nbs']}**."
+                        "A tabela de consulta do manual também incluirá **todas as "
+                        f"{len(enquadramentos_manual)} possibilidade(s) de NBS** vinculadas aos "
+                        "serviços selecionados para esta empresa."
                     )
                 else:
                     st.caption(
-                        "Para incluir o enquadramento NBS, mantenha selecionado no manual o mesmo "
-                        "serviço escolhido no painel da etapa Empresa."
+                        "Não foram localizadas possibilidades de NBS para os serviços selecionados."
                     )
 
                 assinatura_manual = (

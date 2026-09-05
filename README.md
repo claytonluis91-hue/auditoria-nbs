@@ -73,7 +73,7 @@ data de competência e selecione até dez itens da LC 116. O portal gera um PDF
 com:
 
 - identificação da empresa e da localidade considerada;
-- enquadramento selecionado na consulta empresarial, com serviço LC 116, CNAE, cClassTrib, anexo e NBS;
+- tabela com todas as possibilidades da consulta empresarial para os serviços escolhidos, relacionando LC 116, CNAE, cClassTrib, anexo e NBS;
 - passo a passo de emissão no Emissor Público Nacional Web;
 - capturas do guia oficial, preservadas sem edição;
 - todas as classificações nacionais compatíveis com os itens selecionados;

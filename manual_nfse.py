@@ -18,7 +18,7 @@ import backend_issqn as issqn
 PASTA_PROJETO = Path(__file__).resolve().parent
 CAMINHO_CODIGOS = PASTA_PROJETO / "codigo_servico_nacional.json"
 PASTA_IMAGENS = PASTA_PROJETO / "assets" / "manual_nfse"
-VERSAO_MANUAL = "1.1"
+VERSAO_MANUAL = "1.2"
 VERSAO_GUIA_OFICIAL = "1.2"
 URL_EMISSOR = "https://www.nfse.gov.br/EmissorNacional"
 URL_GUIA = (
@@ -319,59 +319,10 @@ def _codigo_e_descricao(codigo: str, descricao: str) -> str:
     return codigo or descricao or "Não informado"
 
 
-def _pagina_enquadramento_nbs(
-    pdf: ManualPDF,
-    enquadramentos: list[dict[str, str]],
-    numero_secao: int,
-) -> None:
-    pdf.add_page()
-    _titulo_secao(pdf, numero_secao, "Enquadramento NBS selecionado na consulta")
-    _paragrafos(
-        pdf,
-        [
-            "Abaixo está a combinação escolhida no painel Serviço prestado da consulta empresarial. Ela relaciona o item da LC 116, o CNAE, a classificação tributária da reforma e a NBS candidata.",
-            "Confirme a NBS pela natureza efetiva do serviço, pelo contrato e pelas notas explicativas antes de emitir a nota fiscal.",
-        ],
-    )
-    campos = (
-        ("Serviço prestado", "item_lc116", "descricao_lc116"),
-        ("CNAE", "cnae", "descricao_cnae"),
-        ("Cód. trib. reforma", "cclass_trib", "classificacao_tributaria"),
-        ("Anexo", "anexo", ""),
-        ("NBS", "nbs", "descricao_nbs"),
-    )
-    for indice, registro in enumerate(enquadramentos, start=1):
-        if pdf.get_y() > 218:
-            pdf.add_page()
-            _titulo_secao(
-                pdf,
-                numero_secao,
-                "Enquadramento NBS selecionado - continuação",
-            )
-        pdf.set_fill_color(237, 244, 249)
-        pdf.set_text_color(23, 74, 120)
-        pdf.set_font("Helvetica", "B", 10)
-        titulo = "Seleção da primeira tela" if len(enquadramentos) == 1 else f"Seleção {indice}"
-        pdf.cell(0, 8, _pdf_texto(titulo), fill=True)
-        pdf.ln(10)
-        for rotulo, chave_codigo, chave_descricao in campos:
-            pdf.set_x(15)
-            codigo = registro.get(chave_codigo, "")
-            descricao = registro.get(chave_descricao, "") if chave_descricao else ""
-            valor = _codigo_e_descricao(codigo, descricao)
-            pdf.set_text_color(31, 43, 55)
-            pdf.set_font("Helvetica", "B", 9)
-            pdf.cell(34, 6, _pdf_texto(f"{rotulo}:"))
-            pdf.set_font("Helvetica", "", 9)
-            pdf.multi_cell(146, 6, _pdf_texto(valor))
-        pdf.set_draw_color(190, 205, 218)
-        pdf.line(15, pdf.get_y() + 2, 195, pdf.get_y() + 2)
-        pdf.ln(7)
-
-
 def _tabela_classificacoes(
     pdf: ManualPDF,
     classificacoes: list[dict[str, str]],
+    enquadramentos_nbs: list[dict[str, str]],
     localidade: dict[str, str],
     numero_secao: int,
 ) -> None:
@@ -415,6 +366,56 @@ def _tabela_classificacoes(
             linha.cell(_pdf_texto(registro["aliquota"]))
             linha.cell(_pdf_texto(registro["descricao"]))
 
+    if not enquadramentos_nbs:
+        return
+    pdf.ln(8)
+    pdf.set_fill_color(237, 244, 249)
+    pdf.set_text_color(23, 74, 120)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 8, _pdf_texto("Possibilidades NBS da consulta empresarial"), fill=True)
+    pdf.ln(11)
+    pdf.set_text_color(31, 43, 55)
+    _paragrafos(
+        pdf,
+        [
+            "A lista abaixo reúne todas as combinações encontradas para os serviços selecionados, sem restringir pelos filtros escolhidos na primeira tela. Use-a como apoio e confirme a NBS pela natureza efetiva do serviço, pelo contrato e pelas notas explicativas.",
+        ],
+    )
+    pdf.set_font("Helvetica", "", 6.6)
+    with pdf.table(
+        width=180,
+        col_widths=(42, 43, 43, 52),
+        headings_style=estilo,
+        line_height=4.1,
+        text_align="LEFT",
+        borders_layout="HORIZONTAL_LINES",
+        repeat_headings=1,
+    ) as tabela_nbs:
+        cabecalho = tabela_nbs.row()
+        for valor in ("Serviço LC 116", "CNAE", "cClassTrib / Anexo", "NBS"):
+            cabecalho.cell(_pdf_texto(valor))
+        for registro in enquadramentos_nbs:
+            linha = tabela_nbs.row(style=estilo_corpo)
+            linha.cell(
+                _pdf_texto(
+                    _codigo_e_descricao(
+                        registro["item_lc116"], registro["descricao_lc116"]
+                    )
+                )
+            )
+            linha.cell(
+                _pdf_texto(
+                    _codigo_e_descricao(registro["cnae"], registro["descricao_cnae"])
+                )
+            )
+            classificacao = _codigo_e_descricao(
+                registro["cclass_trib"], registro["classificacao_tributaria"]
+            )
+            linha.cell(_pdf_texto(f"{classificacao} | Anexo: {registro['anexo']}"))
+            linha.cell(
+                _pdf_texto(_codigo_e_descricao(registro["nbs"], registro["descricao_nbs"]))
+            )
+
 
 def gerar_manual_nfse(
     empresa: dict[str, Any],
@@ -443,12 +444,8 @@ def gerar_manual_nfse(
     pdf = ManualPDF(razao)
     _pagina_capa(pdf, empresa, itens, localidade)
 
-    deslocamento = 1 if enquadramentos else 0
-    if enquadramentos:
-        _pagina_enquadramento_nbs(pdf, enquadramentos, 1)
-
     pdf.add_page()
-    _titulo_secao(pdf, 1 + deslocamento, "Acesse o Portal Nacional")
+    _titulo_secao(pdf, 1, "Acesse o Portal Nacional")
     _paragrafos(
         pdf,
         [
@@ -464,7 +461,7 @@ def gerar_manual_nfse(
     )
 
     pdf.add_page()
-    _titulo_secao(pdf, 2 + deslocamento, "Inicie uma emissão completa")
+    _titulo_secao(pdf, 2, "Inicie uma emissão completa")
     _paragrafos(
         pdf,
         [
@@ -480,7 +477,7 @@ def gerar_manual_nfse(
     )
 
     pdf.add_page()
-    _titulo_secao(pdf, 3 + deslocamento, "Preencha Pessoas")
+    _titulo_secao(pdf, 3, "Preencha Pessoas")
     _paragrafos(
         pdf,
         [
@@ -496,7 +493,7 @@ def gerar_manual_nfse(
     )
 
     pdf.add_page()
-    _titulo_secao(pdf, 4 + deslocamento, "Preencha Serviço")
+    _titulo_secao(pdf, 4, "Preencha Serviço")
     _paragrafos(
         pdf,
         [
@@ -512,10 +509,10 @@ def gerar_manual_nfse(
         altura=125,
     )
 
-    _tabela_classificacoes(pdf, classificacoes, localidade, 5 + deslocamento)
+    _tabela_classificacoes(pdf, classificacoes, enquadramentos, localidade, 5)
 
     pdf.add_page()
-    _titulo_secao(pdf, 6 + deslocamento, "Informe os valores e tributos")
+    _titulo_secao(pdf, 6, "Informe os valores e tributos")
     _paragrafos(
         pdf,
         [
@@ -532,7 +529,7 @@ def gerar_manual_nfse(
     )
 
     pdf.add_page()
-    _titulo_secao(pdf, 7 + deslocamento, "Revise e emita a NFS-e")
+    _titulo_secao(pdf, 7, "Revise e emita a NFS-e")
     _paragrafos(
         pdf,
         [
@@ -554,7 +551,7 @@ def gerar_manual_nfse(
     )
 
     pdf.add_page()
-    _titulo_secao(pdf, 8 + deslocamento, "Fontes, versão e responsabilidade")
+    _titulo_secao(pdf, 8, "Fontes, versão e responsabilidade")
     _paragrafos(
         pdf,
         [
