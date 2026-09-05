@@ -397,6 +397,10 @@ COLUNAS_RELATORIO = [
     "Descrição NBS",
     "cClassTrib",
     "Classificação Tributária",
+    "Redução IBS (%)",
+    "Redução CBS (%)",
+    "Tipo de Alíquota",
+    "Fundamento legal",
     "INDOP",
     "Detalhamento INDOP",
     "Status do vínculo",
@@ -411,6 +415,10 @@ COLUNAS_RESUMO = [
     "Descrição NBS",
     "cClassTrib",
     "Classificação Tributária",
+    "Redução IBS (%)",
+    "Redução CBS (%)",
+    "Tipo de Alíquota",
+    "Fundamento legal",
     "Quantidade INDOP",
     "Opções INDOP",
     "Detalhamentos INDOP",
@@ -423,6 +431,7 @@ def gerar_combinacoes_cnae_nbs(
     df_cnae: pd.DataFrame,
     df_main: pd.DataFrame,
     df_indop: pd.DataFrame,
+    df_regras: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     codigos = {normalizar_cnae(codigo) for codigo in codigos_cnae if normalizar_cnae(codigo)}
     if not codigos or df_cnae.empty:
@@ -433,6 +442,32 @@ def gerar_combinacoes_cnae_nbs(
         return pd.DataFrame(columns=COLUNAS_RELATORIO)
 
     principal = df_main.copy()
+    colunas_regra = {
+        "CHAVE": "cClassTrib",
+        "Percentual Redução IBS": "Redução IBS (%)",
+        "Percentual Redução CBS": "Redução CBS (%)",
+        "Tipo de Alíquota": "Tipo de Alíquota",
+        "Url da Legislação": "Fundamento legal",
+    }
+    if df_regras is not None and not df_regras.empty:
+        disponiveis = [coluna for coluna in colunas_regra if coluna in df_regras.columns]
+        regras = (
+            df_regras[disponiveis]
+            .drop_duplicates("CHAVE")
+            .rename(columns=colunas_regra)
+        )
+        principal = principal.merge(regras, on="cClassTrib", how="left")
+    for coluna, padrao in {
+        "Redução IBS (%)": 0.0,
+        "Redução CBS (%)": 0.0,
+        "Tipo de Alíquota": "Não informada",
+        "Fundamento legal": FONTE_LC_214,
+    }.items():
+        if coluna not in principal.columns:
+            principal[coluna] = padrao
+        principal[coluna] = principal[coluna].fillna(padrao)
+    for coluna in ("Redução IBS (%)", "Redução CBS (%)"):
+        principal[coluna] = pd.to_numeric(principal[coluna], errors="coerce").fillna(0.0)
     if not df_indop.empty:
         colunas_indop = [
             coluna
@@ -486,6 +521,10 @@ def gerar_combinacoes_cnae_nbs(
             "Descrição NBS": combinado["DESCRIÇÃO NBS"].fillna(""),
             "cClassTrib": combinado["cClassTrib"].fillna(""),
             "Classificação Tributária": combinado["nome cClassTrib"].fillna(""),
+            "Redução IBS (%)": combinado["Redução IBS (%)"].fillna(0.0),
+            "Redução CBS (%)": combinado["Redução CBS (%)"].fillna(0.0),
+            "Tipo de Alíquota": combinado["Tipo de Alíquota"].fillna("Não informada"),
+            "Fundamento legal": combinado["Fundamento legal"].fillna(FONTE_LC_214),
             "INDOP": combinado["INDOP"].fillna(""),
             "Detalhamento INDOP": combinado["DETALHE_INDOP"].fillna(""),
             "Status do vínculo": possui_nbs.map(
@@ -496,6 +535,256 @@ def gerar_combinacoes_cnae_nbs(
     return resultado.drop_duplicates().sort_values(
         ["CNAE", "Item LC 116", "NBS"], kind="stable"
     ).reset_index(drop=True)
+
+
+def buscar_codigos_servico(df_cnae: pd.DataFrame, termo: str) -> pd.DataFrame:
+    """Busca itens da LC 116 por código ou descrição, sem duplicar CNAEs."""
+
+    colunas = ["item_lista_servico", "descricao_item"]
+    if df_cnae.empty or not termo:
+        return pd.DataFrame(columns=colunas)
+    procurado = _texto_sem_acentos(termo)
+    codigo = normalizar_codigo_servico(termo) if re.search(r"\d", termo) else ""
+    mascara = pd.Series(False, index=df_cnae.index)
+    for coluna in ("item_lista_servico", "descricao_item"):
+        mascara |= df_cnae[coluna].fillna("").map(_texto_sem_acentos).str.contains(
+            procurado, regex=False, na=False
+        )
+    if codigo:
+        mascara |= df_cnae["item_lista_servico"].eq(codigo)
+    return (
+        df_cnae.loc[mascara, colunas]
+        .drop_duplicates()
+        .sort_values("item_lista_servico", kind="stable")
+        .reset_index(drop=True)
+    )
+
+
+def gerar_combinacoes_codigo_servico(
+    codigos_servico: Iterable[Any],
+    df_cnae: pd.DataFrame,
+    df_main: pd.DataFrame,
+    df_indop: pd.DataFrame,
+    df_regras: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Faz o caminho inverso LC 116 -> CNAE -> NBS e regras tributárias."""
+
+    codigos = {
+        normalizar_codigo_servico(codigo)
+        for codigo in codigos_servico
+        if normalizar_codigo_servico(codigo)
+    }
+    if not codigos or df_cnae.empty:
+        return pd.DataFrame(columns=COLUNAS_RELATORIO)
+    vinculos = df_cnae[df_cnae["item_lista_servico"].isin(codigos)]
+    resultado = gerar_combinacoes_cnae_nbs(
+        vinculos["cnae_numeros"].unique(), df_cnae, df_main, df_indop, df_regras
+    )
+    return resultado[resultado["Item LC 116"].isin(codigos)].reset_index(drop=True)
+
+
+def obter_regra_tributaria(codigo: Any, df_regras: pd.DataFrame) -> dict[str, Any]:
+    """Retorna os percentuais e metadados legais de uma cClassTrib."""
+
+    chave = normalizar_classificacao(codigo)
+    if df_regras.empty or "CHAVE" not in df_regras.columns:
+        return {
+            "codigo": chave,
+            "localizada": False,
+            "reducao_ibs": 0.0,
+            "reducao_cbs": 0.0,
+            "tipo_aliquota": "Não informada",
+            "numero_anexo": "Não informado",
+            "descricao": "Regra não localizada na base atual.",
+            "fundamento_legal": FONTE_LC_214,
+        }
+    encontrada = df_regras[df_regras["CHAVE"].eq(chave)]
+    if encontrada.empty:
+        return obter_regra_tributaria(chave, pd.DataFrame())
+    linha = encontrada.iloc[0]
+    return {
+        "codigo": chave,
+        "localizada": True,
+        "reducao_ibs": _numero_percentual(linha.get("Percentual Redução IBS", 0), "Redução IBS"),
+        "reducao_cbs": _numero_percentual(linha.get("Percentual Redução CBS", 0), "Redução CBS"),
+        "tipo_aliquota": str(linha.get("Tipo de Alíquota", "Não informada") or "Não informada"),
+        "numero_anexo": str(linha.get("Número do Anexo", "") or "Não informado"),
+        "descricao": str(
+            linha.get("Descrição do Código da Classificação Tributária", "Regra localizada")
+        ),
+        "fundamento_legal": str(linha.get("Url da Legislação", FONTE_LC_214) or FONTE_LC_214).strip('"\r\n '),
+    }
+
+
+SETORES_SERVICO = {
+    "Tecnologia, informação e comunicação": {
+        "divisoes": set(range(58, 64)),
+        "foco": "software, licenciamento, suporte, telecomunicações e serviços digitais",
+        "recomendacoes": [
+            "Separar contratos de desenvolvimento, licenciamento, suporte, hospedagem e cessão de direitos.",
+            "Confirmar a NBS pela entrega efetiva e pelo grau de customização, não apenas pelo CNAE cadastral.",
+            "Revisar o domicílio do adquirente e o INDOP para determinar o local de incidência.",
+            "Em segurança da informação ou cibernética, conferir NBS e requisitos societários da legislação vigente.",
+        ],
+    },
+    "Serviços profissionais, científicos e técnicos": {
+        "divisoes": set(range(69, 76)),
+        "foco": "jurídico, contábil, engenharia, arquitetura, consultoria e atividades técnicas",
+        "recomendacoes": [
+            "Verificar se a atividade é exercida por profissão fiscalizada por conselho e se a forma societária cumpre os requisitos legais.",
+            "Testar a hipótese de redução de 30% somente após validar atividade, profissionais e contrato.",
+            "Segregar serviços intelectuais de intermediação, administração e atividades acessórias.",
+            "Documentar escopo, responsável técnico, conselho profissional e NBS em cada linha de serviço.",
+        ],
+    },
+    "Educação": {
+        "divisoes": {85},
+        "foco": "ensino, treinamento e atividades educacionais",
+        "recomendacoes": [
+            "Confrontar o serviço com as NBS do Anexo II da LC 214 antes de aplicar redução.",
+            "Separar mensalidades e cursos das receitas acessórias, materiais, alimentação e locações.",
+            "Revisar bolsas, descontos, cancelamentos e momento de reconhecimento da contraprestação.",
+            "Manter evidência da modalidade, público, carga horária e natureza do serviço prestado.",
+        ],
+    },
+    "Saúde e assistência social": {
+        "divisoes": {86, 87, 88},
+        "foco": "atendimento de saúde, diagnóstico, cuidados e assistência social",
+        "recomendacoes": [
+            "Confrontar cada procedimento com as NBS do Anexo III da LC 214 e distinguir serviço de saúde de atividade acessória.",
+            "Separar atendimento direto, intermediação e planos de assistência, pois os regimes e créditos podem divergir.",
+            "Reconciliar glosas, repasses, materiais, medicamentos e honorários com os documentos fiscais.",
+            "Validar redução, alíquota zero e restrições de crédito pela operação concreta.",
+        ],
+    },
+    "Transporte, armazenagem e logística": {
+        "divisoes": set(range(49, 54)),
+        "foco": "transporte de passageiros e cargas, armazenagem, correios e entregas",
+        "recomendacoes": [
+            "Identificar modal, origem, destino, percurso e natureza municipal, intermunicipal ou internacional.",
+            "Separar frete, armazenagem, manuseio, agenciamento, pedágio e serviços acessórios.",
+            "Revisar o INDOP e o documento fiscal aplicável antes de definir o local de incidência.",
+            "Conferir regimes específicos e regras de crédito conforme o tipo de transporte.",
+        ],
+    },
+    "Serviços financeiros, seguros e planos": {
+        "divisoes": {64, 65, 66},
+        "foco": "intermediação financeira, seguros, previdência e planos",
+        "recomendacoes": [
+            "Mapear receitas por produto, tarifa, comissão, spread, prêmio e contraprestação.",
+            "Não aplicar automaticamente a alíquota padrão: validar o regime específico e a base de cálculo.",
+            "Revisar deduções, estornos, repasses e restrições de crédito de cada operação.",
+            "Conciliar cClassTrib, documento fiscal e obrigações do regime uniforme setorial.",
+        ],
+    },
+    "Construção e serviços imobiliários": {
+        "divisoes": {41, 42, 43, 68},
+        "foco": "obras, instalações, incorporação, locação e administração de imóveis",
+        "recomendacoes": [
+            "Separar obra, projeto, administração, manutenção, incorporação e locação.",
+            "Identificar materiais fornecidos, subcontratações e o imóvel vinculado à operação.",
+            "Revisar o local do imóvel como elemento de incidência e a documentação por empreendimento.",
+            "Avaliar o regime específico imobiliário e controles de custo, aquisição e créditos.",
+        ],
+    },
+    "Hospedagem e alimentação": {
+        "divisoes": {55, 56},
+        "foco": "hotéis, hospedagem, restaurantes, bares e alimentação",
+        "recomendacoes": [
+            "Segregar hospedagem, alimentação, eventos, estacionamento, taxas e outras comodidades.",
+            "Revisar gorjetas, taxas de serviço, cancelamentos e valores repassados a terceiros.",
+            "Confirmar o tratamento das vendas combinadas e dos insumos usados em cada linha de receita.",
+            "Conferir cClassTrib e local de incidência conforme a prestação efetiva.",
+        ],
+    },
+    "Artes, cultura, esportes e recreação": {
+        "divisoes": {90, 91, 92, 93},
+        "foco": "produção cultural, jornalística, audiovisual, eventos e atividades desportivas",
+        "recomendacoes": [
+            "Conferir se a produção ou atividade e a NBS constam dos anexos legais aplicáveis.",
+            "Separar produção, cessão de direitos, patrocínio, publicidade, bilheteria e intermediação.",
+            "Validar requisitos de produção nacional e a natureza do beneficiário quando exigidos.",
+            "Manter contratos e memórias que sustentem a classificação de cada receita.",
+        ],
+    },
+    "Serviços administrativos, locação e apoio": {
+        "divisoes": set(range(77, 83)),
+        "foco": "locação, seleção, turismo, vigilância, limpeza e apoio empresarial",
+        "recomendacoes": [
+            "Distinguir locação de bens, cessão de mão de obra, intermediação e serviço executado.",
+            "Revisar reembolsos, despesas por conta e ordem, comissões e repasses contratuais.",
+            "Validar o local de incidência pela natureza real do serviço e pelo INDOP.",
+            "Documentar tomador, local da execução, ativos envolvidos e critérios de formação do preço.",
+        ],
+    },
+    "Outros serviços e serviços pessoais": {
+        "divisoes": {94, 95, 96},
+        "foco": "associações, reparos, cuidados pessoais, funerários e demais serviços",
+        "recomendacoes": [
+            "Detalhar a entrega efetiva, pois CNAEs amplos podem levar a itens LC 116 e NBS diferentes.",
+            "Separar mensalidades associativas, serviços individualizados, venda de bens e intermediação.",
+            "Em atividades funerárias e planos, verificar se há regime ou redução específica.",
+            "Revisar contratos, cadastro de itens e descrição do documento fiscal antes da migração.",
+        ],
+    },
+}
+
+_setor_outros = "Outros serviços e serviços pessoais"
+_divisoes_especificas = set().union(
+    *(
+        dados["divisoes"]
+        for nome, dados in SETORES_SERVICO.items()
+        if nome != _setor_outros
+    )
+)
+SETORES_SERVICO[_setor_outros]["divisoes"] = set(range(1, 100)) - _divisoes_especificas
+
+
+def identificar_setor_cnae(codigo: Any) -> str:
+    digitos = normalizar_cnae(codigo)
+    divisao = int(digitos[:2]) if len(digitos) >= 2 else -1
+    for nome, dados in SETORES_SERVICO.items():
+        if divisao in dados["divisoes"]:
+            return nome
+    return "Outros serviços e serviços pessoais"
+
+
+def diagnostico_setor(
+    setor: str,
+    df_cnae: pd.DataFrame,
+    df_main: pd.DataFrame,
+    df_regras: pd.DataFrame,
+) -> dict[str, Any]:
+    """Resume cobertura e pontos de revisão para um setor de serviços."""
+
+    if setor not in SETORES_SERVICO:
+        raise ValidacaoFiscalError("Setor de serviço não reconhecido.")
+    divisoes = SETORES_SERVICO[setor]["divisoes"]
+    mascara = df_cnae["cnae_numeros"].str[:2].map(
+        lambda valor: int(valor) if str(valor).isdigit() else -1
+    ).isin(divisoes)
+    vinculos = df_cnae[mascara].copy()
+    itens = set(vinculos["item_lista_servico"])
+    servicos = df_main[df_main["Item LC 116"].isin(itens)].copy()
+    regras_reducao = df_regras.copy()
+    if not regras_reducao.empty:
+        ibs = pd.to_numeric(regras_reducao["Percentual Redução IBS"], errors="coerce").fillna(0)
+        cbs = pd.to_numeric(regras_reducao["Percentual Redução CBS"], errors="coerce").fillna(0)
+        codigos_reducao = set(regras_reducao.loc[(ibs > 0) | (cbs > 0), "CHAVE"])
+    else:
+        codigos_reducao = set()
+    candidatos_reducao = servicos[servicos["cClassTrib"].isin(codigos_reducao)]
+    return {
+        "setor": setor,
+        "foco": SETORES_SERVICO[setor]["foco"],
+        "recomendacoes": list(SETORES_SERVICO[setor]["recomendacoes"]),
+        "cnaes": vinculos["cnae_numeros"].nunique(),
+        "itens_lc": vinculos["item_lista_servico"].nunique(),
+        "nbs": servicos["NBS"].nunique(),
+        "candidatos_reducao": candidatos_reducao[
+            ["Item LC 116", "NBS", "DESCRIÇÃO NBS", "cClassTrib", "nome cClassTrib"]
+        ].drop_duplicates().reset_index(drop=True),
+    }
 
 
 def resumir_combinacoes(df_dados: pd.DataFrame) -> pd.DataFrame:
@@ -512,6 +801,10 @@ def resumir_combinacoes(df_dados: pd.DataFrame) -> pd.DataFrame:
         "Descrição NBS",
         "cClassTrib",
         "Classificação Tributária",
+        "Redução IBS (%)",
+        "Redução CBS (%)",
+        "Tipo de Alíquota",
+        "Fundamento legal",
         "Status do vínculo",
     ]
 
@@ -627,6 +920,17 @@ def gerar_relatorio_pdf(
         pdf.ln()
     pdf.ln(4)
     pdf.set_font("Helvetica", "I", 8)
+    pdf.multi_cell(
+        0,
+        5,
+        _pdf_texto(
+            f"Redução aplicada: IBS {dados_simulacao['reducao_ibs']:.2f}% e "
+            f"CBS {dados_simulacao['reducao_cbs']:.2f}%. Alíquotas efetivas: "
+            f"IBS {dados_simulacao['ibs_efetivo']:.2f}% e CBS {dados_simulacao['cbs_efetivo']:.2f}%."
+        ),
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
     pdf.multi_cell(0, 5, _pdf_texto(dados_simulacao["observacao"]), new_x="LMARGIN", new_y="NEXT")
     pdf.multi_cell(0, 5, _pdf_texto(AVISO_CLASSIFICACAO), new_x="LMARGIN", new_y="NEXT")
     return bytes(pdf.output())
@@ -674,14 +978,25 @@ def gerar_pdf_paisagem(dados_empresa: dict[str, Any], df_dados: pd.DataFrame) ->
             "NBS",
             "Descrição NBS",
             "cClassTrib",
+            "Redução IBS (%)",
+            "Redução CBS (%)",
             "Quantidade INDOP",
             "Opções INDOP",
         ]
-        larguras = [20, 18, 23, 115, 22, 25, 54]
+        larguras = [20, 18, 23, 80, 22, 18, 18, 25, 53]
     else:
-        colunas = ["CNAE", "Item LC 116", "NBS", "Descrição NBS", "cClassTrib", "Detalhamento INDOP"]
+        colunas = [
+            "CNAE",
+            "Item LC 116",
+            "NBS",
+            "Descrição NBS",
+            "cClassTrib",
+            "Redução IBS (%)",
+            "Redução CBS (%)",
+            "Detalhamento INDOP",
+        ]
         # 277 mm: largura útil exata de uma página A4 paisagem com margens de 10 mm.
-        larguras = [20, 18, 23, 108, 22, 86]
+        larguras = [20, 18, 23, 85, 22, 18, 18, 73]
 
     def cabecalho_tabela() -> None:
         pdf.set_fill_color(225, 235, 247)
@@ -917,6 +1232,10 @@ def gerar_excel_completo(
                 "Descrição NBS": 65,
                 "cClassTrib": 14,
                 "Classificação Tributária": 48,
+                "Redução IBS (%)": 18,
+                "Redução CBS (%)": 18,
+                "Tipo de Alíquota": 26,
+                "Fundamento legal": 54,
                 "INDOP": 14,
                 "Detalhamento INDOP": 72,
                 "Quantidade INDOP": 18,

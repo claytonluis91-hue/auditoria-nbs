@@ -18,7 +18,12 @@ streamlit run app_auditoria.py
 
 ## Principais recursos
 
-- fluxo persistente em quatro etapas: Empresa, Classificação, Simulação e Relatórios;
+- fluxo persistente em cinco etapas: Empresa, Consulta individual, Simulação, Relatórios e Recomendações;
+- consulta individual em dois sentidos: `CNAE → código LC 116` e `código LC 116 → CNAE`;
+- painel em cascata após a consulta do CNPJ: Serviço LC 116 → CNAE da empresa → cClassTrib → NBS;
+- reduções de IBS e CBS, tipo de alíquota e fundamento legal visíveis no resultado, na simulação e nas exportações;
+- recomendações por setor de serviço, com roteiro de revisão e candidatos a redução;
+- consulta das alíquotas municipais de ISSQN por código IBGE, Código de Tributação Nacional e data de competência;
 - visão resumida que agrupa opções INDOP repetidas e painel de detalhes sob demanda;
 - pesquisa literal sem falhas com caracteres especiais e sem distinção de acentos;
 - normalização dos itens da LC 116, preservando códigos como `4.10`;
@@ -32,10 +37,32 @@ streamlit run app_auditoria.py
 ## Fluxo de uso
 
 1. Consulte o CNPJ ou avance para a pesquisa manual.
-2. Revise os candidatos agrupados por CNAE, item LC 116 e NBS.
+2. Escolha a consulta por CNAE ou por código de serviço e revise os candidatos.
 3. Selecione um candidato e abra suas opções INDOP detalhadas.
-4. Simule o cenário tributário desejado.
-5. Configure e prepare o relatório resumido ou completo.
+4. Confira reduções, tipo de alíquota e fundamento legal da cClassTrib.
+5. Simule o cenário tributário desejado e prepare os relatórios.
+6. Consulte o roteiro de recomendações do setor.
+7. Confira a alíquota municipal vigente e as possíveis classificações nacionais na etapa ISSQN municipal.
+
+## Base municipal de ISSQN
+
+Os CSVs oficiais devem permanecer na pasta `aliquotas ISSQN`. Para gerar a
+base SQLite otimizada usada pelo portal, execute:
+
+```powershell
+python backend_issqn.py --compactar
+```
+
+O arquivo `aliquotas ISSQN/issqn.sqlite3` é derivado, pode ser reconstruído a
+qualquer momento e não deve ser versionado. A importação preserva o histórico
+de vigência e mantém alíquotas vazias como “não informadas”, sem convertê-las
+em zero. A quantidade exibida como “municípios com registros” reflete o
+conteúdo efetivamente encontrado nos CSVs, que pode ser menor do que o total
+de municípios mencionado na página de publicação.
+
+Para implantação, versione somente o snapshot `issqn.sqlite3.gz` (cerca de
+33 MB nesta publicação). Quando o SQLite local não existe, o portal
+descompacta esse snapshot automaticamente na pasta temporária do servidor.
 
 ## Testes
 
@@ -59,3 +86,5 @@ definitivas.
 
 - [LC 214/2025 — texto compilado](https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp214compilado.htm)
 - [Painel oficial de códigos NBS](https://www.gov.br/mdic/pt-br/assuntos/sdic/comercio-e-servicos/nbs-nomenclatura-brasileira-de-servicos/painel-de-codigos-nbs/painel-de-codigos-nbs/)
+- [Alíquotas de ISSQN do Sistema Nacional da NFS-e](https://www.gov.br/nfse/pt-br/biblioteca/perguntas-e-respostas/aliquotas)
+- [Guia do Emissor Público Nacional Web](https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual/guia-emissorpubliconacionalweb_snnfse-ern-v12.pdf)

@@ -32,6 +32,45 @@ class BackendFiscalTests(unittest.TestCase):
         sem_acento = motor.buscar_cnae(self.df_cnae, "telecomunicacoes")
         self.assertEqual(set(com_acento["cnae_numeros"]), set(sem_acento["cnae_numeros"]))
 
+    def test_consulta_por_codigo_de_servico_retorna_cnaes_e_tributos(self):
+        codigos = motor.buscar_codigos_servico(self.df_cnae, "1.01")
+        self.assertIn("1.01", set(codigos["item_lista_servico"]))
+        resultado = motor.gerar_combinacoes_codigo_servico(
+            ["1.01"], self.df_cnae, self.df, self.df_indop, self.df_regras
+        )
+        self.assertFalse(resultado.empty)
+        self.assertTrue(resultado["Item LC 116"].eq("1.01").all())
+        self.assertGreater(resultado["CNAE"].nunique(), 1)
+        self.assertIn("Redução IBS (%)", resultado.columns)
+        self.assertIn("Fundamento legal", resultado.columns)
+
+    def test_consulta_exibe_reducao_vinculada_a_classificacao(self):
+        regras_reduzidas = self.df_regras[
+            pd.to_numeric(self.df_regras["Percentual Redução IBS"], errors="coerce").fillna(0) > 0
+        ]
+        linha_reduzida = self.df[self.df["cClassTrib"].isin(regras_reduzidas["CHAVE"])].iloc[0]
+        cnae = self.df_cnae[
+            self.df_cnae["item_lista_servico"].eq(linha_reduzida["Item LC 116"])
+        ]["cnae_numeros"].iloc[0]
+        resultado = motor.gerar_combinacoes_cnae_nbs(
+            [cnae], self.df_cnae, self.df, self.df_indop, self.df_regras
+        )
+        reduzidas = resultado[resultado["cClassTrib"].isin(regras_reduzidas["CHAVE"])]
+        self.assertFalse(reduzidas.empty)
+        self.assertGreater(reduzidas["Redução IBS (%)"].max(), 0)
+        self.assertTrue(reduzidas["Fundamento legal"].str.contains("planalto.gov.br").all())
+
+    def test_recomendacoes_setoriais_trazem_diagnostico(self):
+        diagnostico = motor.diagnostico_setor(
+            "Tecnologia, informação e comunicação",
+            self.df_cnae,
+            self.df,
+            self.df_regras,
+        )
+        self.assertGreater(diagnostico["cnaes"], 0)
+        self.assertGreater(diagnostico["itens_lc"], 0)
+        self.assertEqual(len(diagnostico["recomendacoes"]), 4)
+
     def test_calculo_aplica_reducao_e_creditos(self):
         resultado = motor.calcular_comparativo(
             1000,
