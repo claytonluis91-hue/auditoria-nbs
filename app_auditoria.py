@@ -12,6 +12,7 @@ import streamlit as st
 
 import backend_fiscal as motor
 import backend_issqn as issqn
+import manual_nfse as manual
 
 
 # O Streamlit pode recarregar apenas este arquivo e manter uma versão anterior
@@ -104,6 +105,7 @@ ESTADO_INICIAL = {
     "ultima_simulacao": None,
     "servico_simulado": None,
     "arquivos_relatorio": None,
+    "arquivo_manual_nfse": None,
     "etapa_atual": ETAPAS[0],
     "etapa_pendente": None,
     "origem_classificacao": "CNPJ consultado",
@@ -132,6 +134,7 @@ def limpar_empresa() -> None:
     st.session_state.ultima_simulacao = None
     st.session_state.servico_simulado = None
     st.session_state.arquivos_relatorio = None
+    st.session_state.arquivo_manual_nfse = None
     for chave in (
         "cnpj_servico_item",
         "cnpj_servico_cnae",
@@ -1209,6 +1212,13 @@ elif etapa == ETAPAS[5]:
                         "dt_fim": "Fim da vigência",
                     }
                 )
+                tabela_issqn.insert(
+                    1,
+                    "Descrição oficial",
+                    tabela_issqn["Código de Tributação Nacional"].map(
+                        manual.descricao_codigo_servico
+                    ),
+                )
                 st.dataframe(
                     tabela_issqn,
                     width="stretch",
@@ -1216,6 +1226,7 @@ elif etapa == ETAPAS[5]:
                     height=min(520, 38 + len(tabela_issqn) * 35),
                     column_config={
                         "Código de Tributação Nacional": st.column_config.TextColumn(width="medium"),
+                        "Descrição oficial": st.column_config.TextColumn(width="large"),
                         "Código de incidência": st.column_config.TextColumn(width="medium"),
                         "Alíquota ISSQN (%)": st.column_config.NumberColumn(format="%.2f%%"),
                         "Início da vigência": st.column_config.DateColumn(format="DD/MM/YYYY"),
@@ -1231,6 +1242,123 @@ elif etapa == ETAPAS[5]:
                     st.warning(
                         "A publicação contém mais de uma regra vigente para o mesmo código. "
                         "As alternativas foram preservadas para conferência."
+                    )
+
+        st.divider()
+        st.markdown("### Manual personalizado do Emissor Nacional")
+        st.caption(
+            "Gere um PDF com o passo a passo ilustrado e uma tabela das classificações nacionais "
+            "compatíveis com os itens LC 116 selecionados."
+        )
+        if not empresa_issqn:
+            st.info("Consulte um CNPJ na etapa Empresa para habilitar o manual personalizado.")
+        else:
+            relatorio_empresa = st.session_state.relatorio_cnpj
+            itens_empresa: list[str] = []
+            rotulos_itens: dict[str, str] = {}
+            if (
+                isinstance(relatorio_empresa, pd.DataFrame)
+                and not relatorio_empresa.empty
+                and "Item LC 116" in relatorio_empresa.columns
+            ):
+                colunas_disponiveis = ["Item LC 116"]
+                if "Descrição LC 116" in relatorio_empresa.columns:
+                    colunas_disponiveis.append("Descrição LC 116")
+                colunas_itens = relatorio_empresa[colunas_disponiveis].drop_duplicates()
+                for _, linha_item in colunas_itens.iterrows():
+                    codigo_item = motor.normalizar_codigo_servico(linha_item["Item LC 116"])
+                    if codigo_item and codigo_item not in itens_empresa:
+                        itens_empresa.append(codigo_item)
+                        descricao_item = str(linha_item.get("Descrição LC 116", "")).strip()
+                        rotulos_itens[codigo_item] = (
+                            f"{codigo_item} — {descricao_item}" if descricao_item else codigo_item
+                        )
+            if item_selecionado:
+                item_normalizado = motor.normalizar_codigo_servico(item_selecionado)
+                if item_normalizado and item_normalizado not in itens_empresa:
+                    itens_empresa.append(item_normalizado)
+                    rotulos_itens[item_normalizado] = item_normalizado
+            itens_empresa.sort(key=lambda valor: [int(parte) for parte in valor.split(".")])
+
+            if not itens_empresa:
+                st.warning(
+                    "Os CNAEs deste CNPJ não produziram itens LC 116 para compor o manual. "
+                    "Selecione primeiro um serviço na Consulta individual."
+                )
+            else:
+                padrao_manual = (
+                    [motor.normalizar_codigo_servico(item_selecionado)]
+                    if motor.normalizar_codigo_servico(item_selecionado) in itens_empresa
+                    else itens_empresa[: min(3, len(itens_empresa))]
+                )
+                itens_manual = st.multiselect(
+                    "Itens LC 116 que serão explicados no manual",
+                    itens_empresa,
+                    default=padrao_manual,
+                    max_selections=10,
+                    format_func=lambda codigo: rotulos_itens.get(codigo, codigo),
+                    help="Confirme os itens correspondentes aos serviços efetivamente prestados.",
+                )
+                try:
+                    classificacoes_manual = (
+                        manual.classificacoes_por_itens(itens_manual) if itens_manual else []
+                    )
+                except manual.ManualNFSeError as erro:
+                    st.error(str(erro))
+                    classificacoes_manual = []
+                st.write(
+                    f"O PDF incluirá **{len(classificacoes_manual)} classificação(ões) nacional(is)** "
+                    "com descrição oficial e alíquota municipal quando disponível."
+                )
+
+                assinatura_manual = (
+                    str(empresa_issqn.get("cnpj", "")),
+                    tuple(itens_manual),
+                    data_issqn.isoformat(),
+                    codigo_ibge_issqn,
+                    municipio_issqn,
+                    uf_issqn,
+                )
+                if st.button(
+                    "Gerar manual personalizado",
+                    type="primary",
+                    width="stretch",
+                    disabled=not itens_manual,
+                ):
+                    try:
+                        with st.spinner("Montando o manual com imagens e classificações..."):
+                            consulta_manual = issqn.consultar_aliquotas(
+                                codigo_ibge=codigo_ibge_issqn,
+                                municipio=municipio_issqn,
+                                uf=uf_issqn,
+                                data_referencia=data_issqn,
+                            )
+                            pdf_manual = manual.gerar_manual_nfse(
+                                empresa_issqn,
+                                itens_manual,
+                                consulta_manual["registros"],
+                            )
+                        st.session_state.arquivo_manual_nfse = {
+                            "assinatura": assinatura_manual,
+                            "conteudo": pdf_manual,
+                            "nome": manual.nome_arquivo_manual(empresa_issqn),
+                        }
+                    except (issqn.BaseISSQNError, manual.ManualNFSeError) as erro:
+                        st.error(str(erro))
+
+                arquivo_manual = st.session_state.arquivo_manual_nfse
+                if arquivo_manual and arquivo_manual.get("assinatura") == assinatura_manual:
+                    st.success("Manual personalizado preparado com sucesso.")
+                    st.download_button(
+                        "Baixar manual de emissão da NFS-e",
+                        arquivo_manual["conteudo"],
+                        arquivo_manual["nome"],
+                        "application/pdf",
+                        width="stretch",
+                    )
+                elif arquivo_manual:
+                    st.info(
+                        "Os parâmetros do manual mudaram. Clique em gerar novamente para atualizar o PDF."
                     )
 
         st.caption(

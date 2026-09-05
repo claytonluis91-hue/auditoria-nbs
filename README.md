@@ -24,6 +24,7 @@ streamlit run app_auditoria.py
 - reduções de IBS e CBS, tipo de alíquota e fundamento legal visíveis no resultado, na simulação e nas exportações;
 - recomendações por setor de serviço, com roteiro de revisão e candidatos a redução;
 - consulta das alíquotas municipais de ISSQN por código IBGE, Código de Tributação Nacional e data de competência;
+- geração de manual personalizado do Emissor Nacional em PDF, com dados do CNPJ, passo a passo ilustrado e tabela de códigos de serviço aplicáveis;
 - visão resumida que agrupa opções INDOP repetidas e painel de detalhes sob demanda;
 - pesquisa literal sem falhas com caracteres especiais e sem distinção de acentos;
 - normalização dos itens da LC 116, preservando códigos como `4.10`;
@@ -43,6 +44,7 @@ streamlit run app_auditoria.py
 5. Simule o cenário tributário desejado e prepare os relatórios.
 6. Consulte o roteiro de recomendações do setor.
 7. Confira a alíquota municipal vigente e as possíveis classificações nacionais na etapa ISSQN municipal.
+8. Selecione os itens da LC 116 e gere o manual personalizado para baixar em PDF.
 
 ## Base municipal de ISSQN
 
@@ -63,6 +65,23 @@ de municípios mencionado na página de publicação.
 Para implantação, versione somente o snapshot `issqn.sqlite3.gz` (cerca de
 33 MB nesta publicação). Quando o SQLite local não existe, o portal
 descompacta esse snapshot automaticamente na pasta temporária do servidor.
+
+## Manual personalizado da NFS-e
+
+Após consultar um CNPJ, acesse **ISSQN municipal**, confira o município e a
+data de competência e selecione até dez itens da LC 116. O portal gera um PDF
+com:
+
+- identificação da empresa e da localidade considerada;
+- passo a passo de emissão no Emissor Público Nacional Web;
+- capturas do guia oficial, preservadas sem edição;
+- todas as classificações nacionais compatíveis com os itens selecionados;
+- alíquota municipal vigente quando ela estiver disponível na base oficial.
+
+A lista de 338 códigos e descrições em `codigo_servico_nacional.json` foi
+extraída do Anexo B da documentação técnica nacional. O manual é orientativo:
+a classificação deve ser confirmada de acordo com o serviço efetivamente
+prestado e as regras do município.
 
 ## Testes
 

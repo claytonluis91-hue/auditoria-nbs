@@ -20,12 +20,16 @@ htmlcov/
 .codex/
 .vscode/
 .idea/
+tmp/
+fontes_oficiais/
 
 # Sistema e logs
 *.log
 Thumbs.db
 .DS_Store
 
-# Bases derivadas (os CSVs oficiais são a fonte de verdade)
+# Bases locais (o snapshot compactado é o único artefato publicado)
+aliquotas ISSQN/*.csv
+aliquotas ISSQN/*.txt
 aliquotas ISSQN/*.sqlite3
 aliquotas ISSQN/.*.sqlite3.tmp

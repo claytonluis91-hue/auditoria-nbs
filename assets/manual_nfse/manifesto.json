@@ -1,0 +1,49 @@
+{
+  "fonte": "Guia do Emissor Público Nacional Web da NFS-e",
+  "versao": "1.2",
+  "url": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual/guia-emissorpubliconacionalweb_snnfse-ern-v12.pdf",
+  "imagens": [
+    {
+      "arquivo": "01-acesso.png",
+      "xref": 253,
+      "largura": 548,
+      "altura": 290
+    },
+    {
+      "arquivo": "02-iniciar-emissao.png",
+      "xref": 291,
+      "largura": 1237,
+      "altura": 654
+    },
+    {
+      "arquivo": "03-pessoas.png",
+      "xref": 299,
+      "largura": 1158,
+      "altura": 921
+    },
+    {
+      "arquivo": "04-servico.png",
+      "xref": 362,
+      "largura": 889,
+      "altura": 863
+    },
+    {
+      "arquivo": "05-valores.png",
+      "xref": 465,
+      "largura": 1143,
+      "altura": 406
+    },
+    {
+      "arquivo": "06-revisao-servico.png",
+      "xref": 485,
+      "largura": 899,
+      "altura": 558
+    },
+    {
+      "arquivo": "07-revisao-valores.png",
+      "xref": 487,
+      "largura": 1161,
+      "altura": 1110
+    }
+  ]
+}
