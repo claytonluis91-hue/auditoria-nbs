@@ -76,6 +76,12 @@ class ManualNFSeTests(unittest.TestCase):
     def test_nome_do_arquivo_remove_acentos(self):
         self.assertEqual(manual.nome_arquivo_manual(self.empresa), "manual_nfse_arvore_tech.pdf")
 
+    def test_manual_destaca_regra_do_simples_nacional_em_2026(self):
+        alerta = manual.ALERTA_SIMPLES_2026.lower()
+        self.assertIn("não destaque ibs nem cbs", alerta)
+        self.assertIn("31/12/2026", alerta)
+        self.assertIn("01/01/2027", alerta)
+
     def test_manual_exige_cnpj_e_item(self):
         with self.assertRaises(manual.ManualNFSeError):
             manual.gerar_manual_nfse({}, ["1.01"])

@@ -1,49 +1,32 @@
 {
   "fonte": "Guia do Emissor Público Nacional Web da NFS-e",
-  "versao": "1.2",
-  "url": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual/guia-emissorpubliconacionalweb_snnfse-ern-v12.pdf",
+  "arquivo_fonte": "Manual - NFSe Original/guia_emissor_publico_nacional_web_snnfse-ern_versao_1-2-1.pdf",
+  "versao": "1.2.1",
+  "revisao": "27/07/2026",
+  "url_referencia": "https://www.gov.br/nfse/pt-br/biblioteca/documentacao-tecnica/documentacao-atual/guia-emissorpubliconacionalweb_snnfse-ern-v12.pdf",
+  "identidade_visual": {
+    "fonte": "https://nascel.com.br/",
+    "logo": "logo-nascel.png",
+    "icone": "icone-nascel.png",
+    "cor_principal": "#181818",
+    "cor_destaque": "#F5B43E"
+  },
   "imagens": [
-    {
-      "arquivo": "01-acesso.png",
-      "xref": 253,
-      "largura": 548,
-      "altura": 290
-    },
-    {
-      "arquivo": "02-iniciar-emissao.png",
-      "xref": 291,
-      "largura": 1237,
-      "altura": 654
-    },
-    {
-      "arquivo": "03-pessoas.png",
-      "xref": 299,
-      "largura": 1158,
-      "altura": 921
-    },
-    {
-      "arquivo": "04-servico.png",
-      "xref": 362,
-      "largura": 889,
-      "altura": 863
-    },
-    {
-      "arquivo": "05-valores.png",
-      "xref": 465,
-      "largura": 1143,
-      "altura": 406
-    },
-    {
-      "arquivo": "06-revisao-servico.png",
-      "xref": 485,
-      "largura": 899,
-      "altura": 558
-    },
-    {
-      "arquivo": "07-revisao-valores.png",
-      "xref": 487,
-      "largura": 1161,
-      "altura": 1110
-    }
+    {"arquivo": "01-acesso.png", "pagina": 7, "xref": 266, "descricao": "Acesso ao portal"},
+    {"arquivo": "02-iniciar-emissao.png", "pagina": 20, "xref": 317, "descricao": "Menu Tipos de emissão"},
+    {"arquivo": "03-pessoas.png", "pagina": 21, "xref": 321, "descricao": "Passo Pessoas e opção IBS/CBS"},
+    {"arquivo": "04-servico.png", "pagina": 43, "xref": 390, "descricao": "Campos principais do serviço"},
+    {"arquivo": "05-valores.png", "pagina": 79, "xref": 540, "descricao": "Campos de CST e cClassTrib do IBS/CBS"},
+    {"arquivo": "06-revisao-servico.png", "pagina": 85, "xref": 565, "descricao": "Revisão do serviço"},
+    {"arquivo": "07-revisao-valores.png", "pagina": 86, "xref": 568, "descricao": "Prévia de valores com IBS/CBS"},
+    {"arquivo": "08-configuracoes.png", "pagina": 18, "xref": 309, "descricao": "Configurações do emitente"},
+    {"arquivo": "09-servico-complementares.png", "pagina": 43, "xref": 391, "descricao": "Campos complementares do serviço"},
+    {"arquivo": "10-emissao-concluida.png", "pagina": 87, "xref": 573, "descricao": "NFS-e gerada com sucesso"},
+    {"arquivo": "11-notas-emitidas.png", "pagina": 100, "xref": 622, "descricao": "Ações das notas emitidas"},
+    {"arquivo": "12-cancelamento.png", "pagina": 105, "xref": 644, "descricao": "Solicitação de análise fiscal para cancelamento"},
+    {"arquivo": "13-rascunhos.png", "pagina": 113, "xref": 673, "descricao": "Lista de rascunhos"},
+    {"arquivo": "14-servicos-favoritos.png", "pagina": 89, "xref": 583, "descricao": "Cadastro de serviço favorito"},
+    {"arquivo": "15-danfse.png", "pagina": 107, "xref": 649, "descricao": "Exemplo de DANFSe"},
+    {"arquivo": "16-tomador.png", "pagina": 29, "xref": 355, "descricao": "Tomador/adquirente do serviço no Brasil"}
   ]
 }
